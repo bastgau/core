@@ -16,7 +16,7 @@ from homeassistant.helpers.typing import UNDEFINED
 
 from .conftest import DOMAIN
 
-from tests.common import MockConfigEntry, MockUser
+from tests.common import MockUser
 
 SOLAR_POWER = "sensor.solar_power"
 GRID_IMPORT = "sensor.grid_import"
@@ -24,34 +24,32 @@ GRID_IMPORT = "sensor.grid_import"
 pytestmark = pytest.mark.usefixtures("config_entry")
 
 
-@pytest.mark.usefixtures("entity_entry")
-async def test_read_identifiers_unlinked(hass: HomeAssistant) -> None:
-    """Test reading an entity that is not linked to any device."""
-    response = await hass.services.async_call(
-        DOMAIN,
-        "read_identifiers",
-        {"entity_id": SOLAR_POWER},
-        blocking=True,
-        return_response=True,
-    )
-
-    assert response == {
-        "entity_id": SOLAR_POWER,
-        "device_id": None,
-        "identifiers": [],
-        "connections": [],
-        "name": None,
-    }
-
-
-@pytest.mark.usefixtures("entity_entry")
-async def test_read_identifiers_linked(
+@pytest.mark.parametrize(
+    ("linked_device", "identifiers", "connections", "name"),
+    [
+        pytest.param("no_device_id", [], [], None, id="unlinked"),
+        pytest.param(
+            "device_id",
+            [["mqtt", "8848_5"]],
+            [["mac", "aa:bb:cc:dd:ee:ff"]],
+            "Boiler",
+            id="linked",
+        ),
+    ],
+)
+@pytest.mark.usefixtures("entity_entry", "device")
+async def test_read_identifiers(
     hass: HomeAssistant,
     entity_registry: er.EntityRegistry,
-    device: dr.DeviceEntry,
+    request: pytest.FixtureRequest,
+    linked_device: str,
+    identifiers: list[list[str]],
+    connections: list[list[str]],
+    name: str | None,
 ) -> None:
-    """Test reading the identifiers of the linked device."""
-    entity_registry.async_update_entity(SOLAR_POWER, device_id=device.id)
+    """Test reading the device link of an entity."""
+    device_id = request.getfixturevalue(linked_device)
+    entity_registry.async_update_entity(SOLAR_POWER, device_id=device_id)
 
     response = await hass.services.async_call(
         DOMAIN,
@@ -63,10 +61,10 @@ async def test_read_identifiers_linked(
 
     assert response == {
         "entity_id": SOLAR_POWER,
-        "device_id": device.id,
-        "identifiers": [["mqtt", "8848_5"]],
-        "connections": [["mac", "aa:bb:cc:dd:ee:ff"]],
-        "name": "Boiler",
+        "device_id": device_id,
+        "identifiers": identifiers,
+        "connections": connections,
+        "name": name,
     }
 
 
@@ -143,57 +141,63 @@ async def test_add_identifier_reports_unchanged(
     assert response["unchanged"] == [SOLAR_POWER]
 
 
-@pytest.mark.usefixtures("entity_entry")
-async def test_add_identifier_unknown_device(hass: HomeAssistant) -> None:
-    """Test linking to identifiers no device carries."""
-    with pytest.raises(ServiceValidationError) as err:
-        await hass.services.async_call(
-            DOMAIN,
+@pytest.mark.parametrize(
+    ("service", "data", "extra_fixtures", "translation_key"),
+    [
+        pytest.param(
             "add_identifier",
             {"entity_id": SOLAR_POWER, "identifiers": "mqtt:nope"},
-            blocking=True,
-        )
-
-    assert err.value.translation_key == "device_not_found"
-
-
-@pytest.mark.usefixtures("entity_entry", "device")
-async def test_add_identifier_ambiguous(
-    hass: HomeAssistant,
-    device_registry: dr.DeviceRegistry,
-) -> None:
-    """Test identifiers shared by two devices are refused."""
-    other_owner = MockConfigEntry(domain="tasmota", title="Tasmota")
-    other_owner.add_to_hass(hass)
-    device_registry.async_get_or_create(
-        config_entry_id=other_owner.entry_id,
-        identifiers={("mqtt", "8848_5")},
-        name="Boiler bis",
-    )
-
-    with pytest.raises(ServiceValidationError) as err:
-        await hass.services.async_call(
-            DOMAIN,
+            (),
+            "device_not_found",
+            id="no_device_carries_the_identifiers",
+        ),
+        pytest.param(
             "add_identifier",
             {"entity_id": SOLAR_POWER, "identifiers": "mqtt:8848_5"},
-            blocking=True,
-        )
-
-    assert err.value.translation_key == "identifiers_ambiguous"
-
-
-@pytest.mark.usefixtures("device")
-async def test_add_identifier_unregistered_entity(hass: HomeAssistant) -> None:
-    """Test an entity without a registry entry cannot be linked."""
-    with pytest.raises(ServiceValidationError) as err:
-        await hass.services.async_call(
-            DOMAIN,
+            ("colliding_device",),
+            "identifiers_ambiguous",
+            id="two_devices_carry_the_identifiers",
+        ),
+        pytest.param(
             "add_identifier",
             {"entity_id": "sensor.not_registered", "identifiers": "mqtt:8848_5"},
-            blocking=True,
-        )
+            (),
+            "entity_not_registered",
+            id="entity_has_no_registry_entry",
+        ),
+        pytest.param(
+            "remove_identifier",
+            {"entity_id": "sensor.not_registered"},
+            (),
+            "entity_not_registered",
+            id="unlinking_an_entity_without_registry_entry",
+        ),
+        pytest.param(
+            "clone",
+            {"source_entity_id": SOLAR_POWER, "target_entity_id": GRID_IMPORT},
+            (),
+            "source_not_linked",
+            id="clone_source_has_no_device",
+        ),
+    ],
+)
+@pytest.mark.usefixtures("entity_entry", "second_entity_entry", "device")
+async def test_service_validation_error(
+    hass: HomeAssistant,
+    request: pytest.FixtureRequest,
+    service: str,
+    data: dict[str, Any],
+    extra_fixtures: tuple[str, ...],
+    translation_key: str,
+) -> None:
+    """Test the input errors reported to the user."""
+    for fixture in extra_fixtures:
+        request.getfixturevalue(fixture)
 
-    assert err.value.translation_key == "entity_not_registered"
+    with pytest.raises(ServiceValidationError) as err:
+        await hass.services.async_call(DOMAIN, service, data, blocking=True)
+
+    assert err.value.translation_key == translation_key
 
 
 @pytest.mark.parametrize(
@@ -293,30 +297,37 @@ async def test_clone(
     assert response["identifiers"] == [["mqtt", "8848_5"]]
 
 
-@pytest.mark.usefixtures("entity_entry", "second_entity_entry")
-async def test_clone_source_not_linked(hass: HomeAssistant) -> None:
-    """Test cloning from an entity that has no device."""
-    with pytest.raises(ServiceValidationError) as err:
-        await hass.services.async_call(
-            DOMAIN,
+@pytest.mark.parametrize(
+    ("service", "data"),
+    [
+        pytest.param(
+            "add_identifier",
+            {"entity_id": SOLAR_POWER, "identifiers": "mqtt:8848_5"},
+            id="add_identifier",
+        ),
+        pytest.param(
+            "remove_identifier", {"entity_id": SOLAR_POWER}, id="remove_identifier"
+        ),
+        pytest.param(
             "clone",
             {"source_entity_id": SOLAR_POWER, "target_entity_id": GRID_IMPORT},
-            blocking=True,
-        )
-
-    assert err.value.translation_key == "source_not_linked"
-
-
-@pytest.mark.usefixtures("entity_entry", "device")
+            id="clone",
+        ),
+    ],
+)
+@pytest.mark.usefixtures("entity_entry", "second_entity_entry", "device")
 async def test_mutations_require_admin(
-    hass: HomeAssistant, hass_read_only_user: MockUser
+    hass: HomeAssistant,
+    hass_read_only_user: MockUser,
+    service: str,
+    data: dict[str, Any],
 ) -> None:
     """Test a non-admin user cannot rewrite the registry."""
     with pytest.raises(Unauthorized):
         await hass.services.async_call(
             DOMAIN,
-            "add_identifier",
-            {"entity_id": SOLAR_POWER, "identifiers": "mqtt:8848_5"},
+            service,
+            data,
             blocking=True,
             context=Context(user_id=hass_read_only_user.id),
         )

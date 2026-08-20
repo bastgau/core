@@ -23,19 +23,36 @@ async def _async_link(hass: HomeAssistant) -> None:
     )
 
 
-@pytest.mark.usefixtures("config_entry", "entity_entry")
-async def test_link_reapplied_after_reset(
+@pytest.mark.parametrize(
+    ("written_device", "expected_device"),
+    [
+        pytest.param("no_device_id", "device_id", id="cleared_link_is_restored"),
+        pytest.param(
+            "other_device_id",
+            "other_device_id",
+            id="device_set_by_owning_integration_is_kept",
+        ),
+    ],
+)
+@pytest.mark.usefixtures("config_entry", "entity_entry", "device")
+async def test_link_reapplied_after_platform_write(
     hass: HomeAssistant,
     entity_registry: er.EntityRegistry,
-    device: dr.DeviceEntry,
+    request: pytest.FixtureRequest,
+    written_device: str,
+    expected_device: str,
 ) -> None:
-    """Test a link cleared by the owning integration is restored."""
+    """Test what an owning integration writing a device link leaves behind."""
     await _async_link(hass)
 
-    entity_registry.async_update_entity(SOLAR_POWER, device_id=None)
+    entity_registry.async_update_entity(
+        SOLAR_POWER, device_id=request.getfixturevalue(written_device)
+    )
     await hass.async_block_till_done()
 
-    assert entity_registry.async_get(SOLAR_POWER).device_id == device.id
+    assert entity_registry.async_get(SOLAR_POWER).device_id == request.getfixturevalue(
+        expected_device
+    )
 
 
 @pytest.mark.usefixtures("config_entry", "entity_entry", "device")
@@ -54,21 +71,6 @@ async def test_reapply_does_not_loop(
     await hass.async_block_till_done()
 
     assert len(events) == 2
-
-
-@pytest.mark.usefixtures("config_entry", "entity_entry", "device")
-async def test_owning_integration_device_kept(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
-    other_device: dr.DeviceEntry,
-) -> None:
-    """Test a device set by the owning integration is not overridden."""
-    await _async_link(hass)
-
-    entity_registry.async_update_entity(SOLAR_POWER, device_id=other_device.id)
-    await hass.async_block_till_done()
-
-    assert entity_registry.async_get(SOLAR_POWER).device_id == other_device.id
 
 
 @pytest.mark.usefixtures("entity_entry", "device")

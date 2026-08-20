@@ -95,6 +95,38 @@ def other_device(
 
 
 @pytest.fixture
+def colliding_device(
+    hass: HomeAssistant, device_registry: dr.DeviceRegistry, device: dr.DeviceEntry
+) -> dr.DeviceEntry:
+    """Return a device of another config entry carrying the same identifiers."""
+    other_owner = MockConfigEntry(domain="tasmota", title="Tasmota")
+    other_owner.add_to_hass(hass)
+    return device_registry.async_get_or_create(
+        config_entry_id=other_owner.entry_id,
+        identifiers={("mqtt", "8848_5")},
+        name="Boiler bis",
+    )
+
+
+@pytest.fixture
+def no_device_id() -> None:
+    """Return the absence of a device link."""
+    return
+
+
+@pytest.fixture
+def device_id(device: dr.DeviceEntry) -> str:
+    """Return the id of the boiler device."""
+    return device.id
+
+
+@pytest.fixture
+def other_device_id(other_device: dr.DeviceEntry) -> str:
+    """Return the id of the heat pump device."""
+    return other_device.id
+
+
+@pytest.fixture
 def entity_entry(entity_registry: er.EntityRegistry) -> er.RegistryEntry:
     """Return a registered entity that is not linked to any device."""
     return entity_registry.async_get_or_create(
