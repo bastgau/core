@@ -1,0 +1,97 @@
+{
+  "config": {
+    "abort": {
+      "single_instance_allowed": "Already configured. Only a single configuration is possible."
+    },
+    "step": {
+      "user": {
+        "description": "Do you want to set up Device link tools? It adds actions to link entities to a device, and creates no entities of its own."
+      }
+    }
+  },
+  "exceptions": {
+    "device_not_found": {
+      "message": "No device matches the identifiers {identifiers}."
+    },
+    "entity_not_registered": {
+      "message": "{entity_id} has no entity registry entry, so it cannot be linked to a device. An entity only gets one when its integration gives it a unique ID; add a unique_id to its configuration and reload it."
+    },
+    "identifiers_ambiguous": {
+      "message": "Several devices match the identifiers {identifiers}: {devices}. Use identifiers that only one of them carries."
+    },
+    "link_refused": {
+      "message": "The entity registry refused to link {entity_id} to the device {device_id}, because that device id belongs to a device that was split between config entries. Use the identifiers of one of the resulting devices instead."
+    },
+    "source_not_linked": {
+      "message": "{entity_id} is not linked to any device, so there is nothing to clone."
+    },
+    "update_failed": {
+      "message": "Could not update {entity_id}: {error}"
+    }
+  },
+  "selector": {
+    "identifiers": {
+      "fields": {
+        "domain": {
+          "description": "Integration that owns the device, for example 'mqtt'.",
+          "name": "Domain"
+        },
+        "identifier": {
+          "description": "Identifier of the device within that integration, for example '8848_5'.",
+          "name": "Identifier"
+        }
+      }
+    }
+  },
+  "services": {
+    "add_identifier": {
+      "description": "Links entities to the device that carries the given identifiers.",
+      "fields": {
+        "entity_id": {
+          "description": "Entities to link to the device.",
+          "name": "Entities"
+        },
+        "identifiers": {
+          "description": "Identifiers of the target device. Read them with the 'Read identifiers' action on an entity that is already linked to it.",
+          "name": "Identifiers"
+        }
+      },
+      "name": "Add identifier"
+    },
+    "clone": {
+      "description": "Copies the device link of one entity onto other entities, without having to type the identifiers again.",
+      "fields": {
+        "source_entity_id": {
+          "description": "Entity whose device link is copied.",
+          "name": "Source entity"
+        },
+        "target_entity_id": {
+          "description": "Entities that are linked to the same device as the source entity.",
+          "name": "Target entities"
+        }
+      },
+      "name": "Clone device link"
+    },
+    "read_identifiers": {
+      "description": "Reads the identifiers of the device an entity is currently linked to.",
+      "fields": {
+        "entity_id": {
+          "description": "Entity to read the device link of.",
+          "name": "Entity"
+        }
+      },
+      "name": "Read identifiers"
+    },
+    "remove_identifier": {
+      "description": "Unlinks entities from the device they are linked to.",
+      "fields": {
+        "entity_id": {
+          "description": "Entities to unlink from their device.",
+          "name": "Entities"
+        }
+      },
+      "name": "Remove identifier"
+    }
+  },
+  "title": "Device link tools"
+}

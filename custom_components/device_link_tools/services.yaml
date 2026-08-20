@@ -1,0 +1,57 @@
+read_identifiers:
+  fields:
+    entity_id:
+      required: true
+      example: sensor.solar_power
+      selector:
+        entity:
+
+add_identifier:
+  fields:
+    entity_id:
+      required: true
+      example: sensor.solar_power
+      selector:
+        entity:
+          multiple: true
+    identifiers:
+      required: true
+      example: '[{"domain": "mqtt", "identifier": "8848_5"}]'
+      selector:
+        object:
+          multiple: true
+          label_field: domain
+          description_field: identifier
+          translation_key: identifiers
+          fields:
+            domain:
+              required: true
+              selector:
+                text:
+            identifier:
+              required: true
+              selector:
+                text:
+
+remove_identifier:
+  fields:
+    entity_id:
+      required: true
+      example: sensor.solar_power
+      selector:
+        entity:
+          multiple: true
+
+clone:
+  fields:
+    source_entity_id:
+      required: true
+      example: sensor.solar_power
+      selector:
+        entity:
+    target_entity_id:
+      required: true
+      example: sensor.grid_import
+      selector:
+        entity:
+          multiple: true
