@@ -5,11 +5,9 @@ import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 
-from .conftest import DOMAIN
+from .conftest import DOMAIN, SOLAR_POWER
 
 from tests.common import MockConfigEntry
-
-SOLAR_POWER = "sensor.solar_power"
 
 
 @pytest.mark.parametrize("load_registries", [False])

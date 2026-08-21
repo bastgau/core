@@ -6,11 +6,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
-from tests.common import MockConfigEntry
+from .conftest import GRID_IMPORT, LINKS, SOLAR_POWER, async_link
 
-SOLAR_POWER = "sensor.solar_power"
-GRID_IMPORT = "sensor.grid_import"
-LINKS = "links"
+from tests.common import MockConfigEntry
 
 pytestmark = pytest.mark.usefixtures("config_entry")
 
@@ -23,6 +21,19 @@ async def _async_menu(hass: HomeAssistant, config_entry: MockConfigEntry) -> str
     return result["flow_id"]
 
 
+async def _async_add_link_form(
+    hass: HomeAssistant, config_entry: MockConfigEntry
+) -> str:
+    """Open the options flow on the add step and return its flow id."""
+    flow_id = await _async_menu(hass, config_entry)
+    result = await hass.config_entries.options.async_configure(
+        flow_id, {"next_step_id": "add_link"}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "add_link"
+    return flow_id
+
+
 @pytest.mark.usefixtures("entity_entry", "second_entity_entry")
 async def test_add_link(
     hass: HomeAssistant,
@@ -31,12 +42,7 @@ async def test_add_link(
     device: dr.DeviceEntry,
 ) -> None:
     """Test linking several entities to a picked device."""
-    flow_id = await _async_menu(hass, config_entry)
-    result = await hass.config_entries.options.async_configure(
-        flow_id, {"next_step_id": "add_link"}
-    )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "add_link"
+    flow_id = await _async_add_link_form(hass, config_entry)
 
     result = await hass.config_entries.options.async_configure(
         flow_id,
@@ -58,10 +64,7 @@ async def test_add_link_unregistered_entity(
     hass: HomeAssistant, config_entry: MockConfigEntry, device: dr.DeviceEntry
 ) -> None:
     """Test the form reports an entity that has no registry entry."""
-    flow_id = await _async_menu(hass, config_entry)
-    await hass.config_entries.options.async_configure(
-        flow_id, {"next_step_id": "add_link"}
-    )
+    flow_id = await _async_add_link_form(hass, config_entry)
 
     result = await hass.config_entries.options.async_configure(
         flow_id, {"entity_id": ["sensor.not_registered"], "device_id": device.id}
@@ -76,10 +79,7 @@ async def test_add_link_unknown_device(
     hass: HomeAssistant, config_entry: MockConfigEntry
 ) -> None:
     """Test the form reports a device that no longer exists."""
-    flow_id = await _async_menu(hass, config_entry)
-    await hass.config_entries.options.async_configure(
-        flow_id, {"next_step_id": "add_link"}
-    )
+    flow_id = await _async_add_link_form(hass, config_entry)
 
     result = await hass.config_entries.options.async_configure(
         flow_id, {"entity_id": [SOLAR_POWER], "device_id": "does-not-exist"}
@@ -97,12 +97,7 @@ async def test_remove_link(
     device: dr.DeviceEntry,
 ) -> None:
     """Test unlinking an entity from the options flow."""
-    await hass.services.async_call(
-        "device_link_tools",
-        "add_identifier",
-        {"entity_id": SOLAR_POWER, "device_id": device.id},
-        blocking=True,
-    )
+    await async_link(hass, SOLAR_POWER, device)
 
     flow_id = await _async_menu(hass, config_entry)
     result = await hass.config_entries.options.async_configure(
@@ -144,17 +139,9 @@ async def test_add_link_moves_a_link_we_recorded(
     other_device: dr.DeviceEntry,
 ) -> None:
     """Test a link recorded here is re-pointed from the form in one go."""
-    await hass.services.async_call(
-        "device_link_tools",
-        "add_identifier",
-        {"entity_id": SOLAR_POWER, "device_id": device.id},
-        blocking=True,
-    )
+    await async_link(hass, SOLAR_POWER, device)
 
-    flow_id = await _async_menu(hass, config_entry)
-    await hass.config_entries.options.async_configure(
-        flow_id, {"next_step_id": "add_link"}
-    )
+    flow_id = await _async_add_link_form(hass, config_entry)
     result = await hass.config_entries.options.async_configure(
         flow_id, {"entity_id": [SOLAR_POWER], "device_id": other_device.id}
     )
@@ -175,10 +162,7 @@ async def test_add_link_refuses_an_already_linked_entity(
 ) -> None:
     """Test the form reports an entity linked by something other than us."""
     entity_registry.async_update_entity(SOLAR_POWER, device_id=device.id)
-    flow_id = await _async_menu(hass, config_entry)
-    await hass.config_entries.options.async_configure(
-        flow_id, {"next_step_id": "add_link"}
-    )
+    flow_id = await _async_add_link_form(hass, config_entry)
 
     result = await hass.config_entries.options.async_configure(
         flow_id, {"entity_id": [SOLAR_POWER], "device_id": other_device.id}

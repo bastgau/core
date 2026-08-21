@@ -9,23 +9,11 @@ from homeassistant.helpers import (
     issue_registry as ir,
 )
 
-from .conftest import DOMAIN
+from .conftest import DOMAIN, LINKS, SOLAR_POWER, async_link
 
 from tests.common import MockConfigEntry
 
-SOLAR_POWER = "sensor.solar_power"
 ISSUE_ID = f"unresolved_link_{SOLAR_POWER}"
-LINKS = "links"
-
-
-async def _async_link(hass: HomeAssistant) -> None:
-    """Link the solar power sensor to the boiler device."""
-    await hass.services.async_call(
-        DOMAIN,
-        "add_identifier",
-        {"entity_id": SOLAR_POWER, "identifiers": "mqtt:8848_5"},
-        blocking=True,
-    )
 
 
 @pytest.mark.parametrize(
@@ -39,16 +27,17 @@ async def _async_link(hass: HomeAssistant) -> None:
         ),
     ],
 )
-@pytest.mark.usefixtures("config_entry", "entity_entry", "device")
+@pytest.mark.usefixtures("config_entry", "entity_entry")
 async def test_link_reapplied_after_platform_write(
     hass: HomeAssistant,
     entity_registry: er.EntityRegistry,
+    device: dr.DeviceEntry,
     request: pytest.FixtureRequest,
     written_device: str,
     expected_device: str,
 ) -> None:
     """Test what an owning integration writing a device link leaves behind."""
-    await _async_link(hass)
+    await async_link(hass, SOLAR_POWER, device)
 
     entity_registry.async_update_entity(
         SOLAR_POWER, device_id=request.getfixturevalue(written_device)
@@ -60,12 +49,12 @@ async def test_link_reapplied_after_platform_write(
     )
 
 
-@pytest.mark.usefixtures("config_entry", "entity_entry", "device")
+@pytest.mark.usefixtures("config_entry", "entity_entry")
 async def test_reapply_does_not_loop(
-    hass: HomeAssistant, entity_registry: er.EntityRegistry
+    hass: HomeAssistant, entity_registry: er.EntityRegistry, device: dr.DeviceEntry
 ) -> None:
     """Test re-linking fires one registry update and settles."""
-    await _async_link(hass)
+    await async_link(hass, SOLAR_POWER, device)
 
     events: list[er.EventEntityRegistryUpdatedData] = []
     hass.bus.async_listen(
@@ -78,12 +67,12 @@ async def test_reapply_does_not_loop(
     assert len(events) == 2
 
 
-@pytest.mark.usefixtures("entity_entry", "device")
+@pytest.mark.usefixtures("entity_entry")
 async def test_link_persisted(
-    hass: HomeAssistant, config_entry: MockConfigEntry
+    hass: HomeAssistant, config_entry: MockConfigEntry, device: dr.DeviceEntry
 ) -> None:
     """Test the link is recorded in the config entry options."""
-    await _async_link(hass)
+    await async_link(hass, SOLAR_POWER, device)
 
     assert config_entry.options[LINKS] == {SOLAR_POWER: [["mqtt", "8848_5"]]}
 
@@ -96,7 +85,7 @@ async def test_removing_link_stops_reapplying(
     device: dr.DeviceEntry,
 ) -> None:
     """Test an unlinked entity is not linked again."""
-    await _async_link(hass)
+    await async_link(hass, SOLAR_POWER, device)
     await hass.services.async_call(
         DOMAIN, "remove_identifier", {"entity_id": SOLAR_POWER}, blocking=True
     )
@@ -121,7 +110,7 @@ async def test_link_without_loaded_entry(
     assert await hass.config_entries.async_unload(config_entry.entry_id)
     await hass.async_block_till_done()
 
-    await _async_link(hass)
+    await async_link(hass, SOLAR_POWER, device)
 
     assert entity_registry.async_get(SOLAR_POWER).device_id == device.id
     assert LINKS not in config_entry.options
@@ -159,14 +148,15 @@ async def test_stored_link_of_gone_entity_purged(hass: HomeAssistant) -> None:
     assert entry.options[LINKS] == {}
 
 
-@pytest.mark.usefixtures("config_entry", "entity_entry", "device")
+@pytest.mark.usefixtures("config_entry", "entity_entry")
 async def test_link_forgotten_when_entity_removed(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,
     entity_registry: er.EntityRegistry,
+    device: dr.DeviceEntry,
 ) -> None:
     """Test removing the entity drops its stored link."""
-    await _async_link(hass)
+    await async_link(hass, SOLAR_POWER, device)
 
     entity_registry.async_remove(SOLAR_POWER)
     await hass.async_block_till_done()
@@ -182,7 +172,7 @@ async def test_link_follows_renamed_entity(
     device: dr.DeviceEntry,
 ) -> None:
     """Test the stored link follows an entity that is renamed."""
-    await _async_link(hass)
+    await async_link(hass, SOLAR_POWER, device)
 
     entity_registry.async_update_entity(SOLAR_POWER, new_entity_id="sensor.renamed")
     await hass.async_block_till_done()
@@ -200,7 +190,7 @@ async def test_missing_device_raises_issue(
     device: dr.DeviceEntry,
 ) -> None:
     """Test a link that can no longer be resolved raises a repair issue."""
-    await _async_link(hass)
+    await async_link(hass, SOLAR_POWER, device)
 
     device_registry.async_remove_device(device.id)
     await hass.async_block_till_done()
@@ -209,14 +199,15 @@ async def test_missing_device_raises_issue(
     assert issue_registry.async_get_issue(DOMAIN, ISSUE_ID) is not None
 
 
-@pytest.mark.usefixtures("config_entry", "entity_entry", "device")
+@pytest.mark.usefixtures("config_entry", "entity_entry")
 async def test_issue_cleared_when_link_applies(
     hass: HomeAssistant,
     issue_registry: ir.IssueRegistry,
     entity_registry: er.EntityRegistry,
+    device: dr.DeviceEntry,
 ) -> None:
     """Test the repair issue disappears once the link can be applied again."""
-    await _async_link(hass)
+    await async_link(hass, SOLAR_POWER, device)
 
     assert issue_registry.async_get_issue(DOMAIN, ISSUE_ID) is None
 

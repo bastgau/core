@@ -14,12 +14,9 @@ from homeassistant.exceptions import (
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.typing import UNDEFINED
 
-from .conftest import DOMAIN
+from .conftest import DOMAIN, GRID_IMPORT, SOLAR_POWER, async_link
 
 from tests.common import MockConfigEntry, MockUser
-
-SOLAR_POWER = "sensor.solar_power"
-GRID_IMPORT = "sensor.grid_import"
 
 pytestmark = pytest.mark.usefixtures("config_entry")
 
@@ -348,12 +345,7 @@ async def test_remove_identifier(
     device: dr.DeviceEntry,
 ) -> None:
     """Test unlinking an entity from the device this integration put it on."""
-    await hass.services.async_call(
-        DOMAIN,
-        "add_identifier",
-        {"entity_id": SOLAR_POWER, "device_id": device.id},
-        blocking=True,
-    )
+    await async_link(hass, SOLAR_POWER, device)
 
     response = await hass.services.async_call(
         DOMAIN,
@@ -478,12 +470,7 @@ async def test_moving_a_link_we_recorded(
     other_device: dr.DeviceEntry,
 ) -> None:
     """Test a link recorded here is re-pointed in a single call."""
-    await hass.services.async_call(
-        DOMAIN,
-        "add_identifier",
-        {"entity_id": SOLAR_POWER, "device_id": device.id},
-        blocking=True,
-    )
+    await async_link(hass, SOLAR_POWER, device)
 
     await hass.services.async_call(
         DOMAIN,

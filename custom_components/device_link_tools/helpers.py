@@ -1,6 +1,6 @@
 """Helpers to read and rewrite the device link of an entity registry entry."""
 
-from collections.abc import Container, Mapping
+from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
@@ -81,40 +81,11 @@ def async_resolve_entry(
     return entry
 
 
-@callback
-def async_resolve_targets(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
-    entity_ids: list[str],
-    device_id: str | None,
-    tracked: Container[str],
-) -> list[str]:
-    """Resolve the entities to link or unlink, refusing links set elsewhere.
-
-    A link recorded here can be re-pointed or dropped. A link set elsewhere cannot be
-    touched: one an entity's own integration declares is written back on every restart,
-    so it has to be changed where it comes from. Passing device_id None checks an
-    unlink, which only leaves an entity that has no link at all untouched.
-    """
-    entries = [
-        async_resolve_entry(entity_registry, entity_id) for entity_id in entity_ids
-    ]
-
-    for entry in entries:
-        if entry.device_id in (None, device_id) or entry.entity_id in tracked:
-            continue
-        device = dr.async_get(hass).async_get(entry.device_id)
-        raise ServiceValidationError(
-            translation_domain=DOMAIN,
-            translation_key="link_set_elsewhere",
-            translation_placeholders={
-                "entity_id": entry.entity_id,
-                "name": (device and (device.name_by_user or device.name))
-                or entry.device_id,
-            },
-        )
-
-    return [entry.entity_id for entry in entries]
+def device_label(device: dr.DeviceEntry | None, device_id: str) -> str:
+    """Return the name to show for a device, falling back to its id."""
+    if device is None:
+        return device_id
+    return device.name_by_user or device.name or device_id
 
 
 @callback
@@ -144,7 +115,7 @@ def async_resolve_device(
                 "identifiers": format_identifiers(identifiers),
                 "devices": ", ".join(
                     sorted(
-                        f"{device.name_by_user or device.name} ({device.id})"
+                        f"{device_label(device, device.id)} ({device.id})"
                         for device in matches
                     )
                 ),
@@ -184,7 +155,7 @@ def async_resolve_device_id(hass: HomeAssistant, device_id: str) -> dr.DeviceEnt
             translation_key="device_without_identifiers",
             translation_placeholders={
                 "device_id": device_id,
-                "name": device.name_by_user or device.name or device_id,
+                "name": device_label(device, device_id),
             },
         )
 

@@ -2,6 +2,7 @@
 
 from http import HTTPStatus
 
+from aiohttp.test_utils import TestClient
 import pytest
 
 from homeassistant.core import HomeAssistant
@@ -12,14 +13,12 @@ from homeassistant.helpers import (
 )
 from homeassistant.setup import async_setup_component
 
-from .conftest import DOMAIN
+from .conftest import DOMAIN, LINKS, SOLAR_POWER, async_link
 
 from tests.common import MockConfigEntry
 from tests.typing import ClientSessionGenerator
 
-SOLAR_POWER = "sensor.solar_power"
 ISSUE_ID = f"unresolved_link_{SOLAR_POWER}"
-LINKS = "links"
 
 pytestmark = pytest.mark.usefixtures("config_entry")
 
@@ -33,20 +32,15 @@ async def unresolved_link(
     device: dr.DeviceEntry,
 ) -> None:
     """Link the sensor, then make its device unresolvable."""
-    await hass.services.async_call(
-        DOMAIN,
-        "add_identifier",
-        {"entity_id": SOLAR_POWER, "device_id": device.id},
-        blocking=True,
-    )
+    await async_link(hass, SOLAR_POWER, device)
     device_registry.async_remove_device(device.id)
     await hass.async_block_till_done()
 
 
 async def _async_start_fix_flow(
     hass: HomeAssistant, hass_client: ClientSessionGenerator
-) -> str:
-    """Start the repair flow and return its flow id."""
+) -> tuple[str, TestClient]:
+    """Start the repair flow and return its flow id and a client to drive it."""
     assert await async_setup_component(hass, "repairs", {})
     client = await hass_client()
 
@@ -56,7 +50,7 @@ async def _async_start_fix_flow(
     assert response.status == HTTPStatus.OK
     data = await response.json()
     assert data["step_id"] == "select_device"
-    return data["flow_id"]
+    return data["flow_id"], client
 
 
 @pytest.mark.usefixtures("unresolved_link")
@@ -80,8 +74,7 @@ async def test_fix_flow_selects_a_device(
     other_device: dr.DeviceEntry,
 ) -> None:
     """Test picking another device relinks the entity and records it."""
-    flow_id = await _async_start_fix_flow(hass, hass_client)
-    client = await hass_client()
+    flow_id, client = await _async_start_fix_flow(hass, hass_client)
 
     response = await client.post(
         f"/api/repairs/issues/fix/{flow_id}", json={"device_id": other_device.id}
@@ -102,8 +95,7 @@ async def test_fix_flow_without_device_stops_tracking(
     entity_registry: er.EntityRegistry,
 ) -> None:
     """Test submitting no device drops the recorded link."""
-    flow_id = await _async_start_fix_flow(hass, hass_client)
-    client = await hass_client()
+    flow_id, client = await _async_start_fix_flow(hass, hass_client)
 
     response = await client.post(f"/api/repairs/issues/fix/{flow_id}", json={})
     assert response.status == HTTPStatus.OK
@@ -119,8 +111,7 @@ async def test_fix_flow_rejects_unknown_device(
     hass: HomeAssistant, hass_client: ClientSessionGenerator
 ) -> None:
     """Test a device that cannot hold the link is refused."""
-    flow_id = await _async_start_fix_flow(hass, hass_client)
-    client = await hass_client()
+    flow_id, client = await _async_start_fix_flow(hass, hass_client)
 
     response = await client.post(
         f"/api/repairs/issues/fix/{flow_id}", json={"device_id": "does-not-exist"}
@@ -138,8 +129,7 @@ async def test_fix_flow_aborts_when_entry_removed(
     config_entry: MockConfigEntry,
 ) -> None:
     """Test the flow gives up when the integration is removed while it is open."""
-    flow_id = await _async_start_fix_flow(hass, hass_client)
-    client = await hass_client()
+    flow_id, client = await _async_start_fix_flow(hass, hass_client)
 
     assert await hass.config_entries.async_remove(config_entry.entry_id)
     await hass.async_block_till_done()

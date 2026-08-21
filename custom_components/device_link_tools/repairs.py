@@ -6,15 +6,10 @@ from homeassistant.components.repairs import RepairsFlow, RepairsFlowResult
 from homeassistant.const import ATTR_DEVICE_ID
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.selector import DeviceSelector
 
-from .helpers import async_resolve_device_id, async_set_device_link
-from .reapply import (
-    DeviceLinkToolsConfigEntry,
-    async_options_with_links,
-    async_stored_links,
-)
+from .helpers import async_resolve_device_id
+from .reapply import DeviceLinkToolsConfigEntry, async_apply_link
 
 
 class UnresolvedLinkRepairFlow(RepairsFlow):
@@ -43,27 +38,15 @@ class UnresolvedLinkRepairFlow(RepairsFlow):
 
         errors: dict[str, str] = {}
         if user_input is not None:
-            links = async_stored_links(entry)
             device_id = user_input.get(ATTR_DEVICE_ID)
             try:
-                if device_id:
-                    device = async_resolve_device_id(self.hass, device_id)
-                    links[self._entity_id] = device.identifiers
-                else:
-                    links.pop(self._entity_id, None)
-                    device = None
+                device = (
+                    async_resolve_device_id(self.hass, device_id) if device_id else None
+                )
+                async_apply_link(self.hass, [self._entity_id], device)
             except HomeAssistantError:
                 errors[ATTR_DEVICE_ID] = "invalid_device"
             else:
-                async_set_device_link(
-                    er.async_get(self.hass),
-                    self._entity_id,
-                    device.id if device else None,
-                )
-                self.hass.config_entries.async_update_entry(
-                    entry, options=async_options_with_links(entry, links)
-                )
-                await self.hass.config_entries.async_reload(entry.entry_id)
                 return self.async_create_entry(data={})
 
         return self.async_show_form(

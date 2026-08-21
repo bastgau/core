@@ -30,17 +30,14 @@ from .const import (
     SERVICE_REMOVE_IDENTIFIER,
 )
 from .helpers import (
-    Identifiers,
     as_pairs,
     async_device_identifiers,
     async_resolve_device,
     async_resolve_device_id,
     async_resolve_entry,
-    async_resolve_targets,
-    async_set_device_link,
     parse_identifiers,
 )
-from .reapply import async_get_reapplier, async_tracked_entities
+from .reapply import async_apply_link
 
 ENTITY_IDS = vol.All(cv.ensure_list, cv.entity_ids_or_uuids)
 
@@ -88,26 +85,28 @@ async def async_read_identifiers(call: ServiceCall) -> ServiceResponse:
 
 async def async_add_identifier(call: ServiceCall) -> ServiceResponse:
     """Link entities to a device, designated in one of three ways."""
-    if (device_id := call.data.get(ATTR_DEVICE_ID)) is not None:
-        device = async_resolve_device_id(call.hass, device_id)
-    elif (identifiers := call.data.get(ATTR_IDENTIFIERS)) is not None:
-        device = async_resolve_device(call.hass, identifiers)
-    elif (source_entity_id := call.data.get(ATTR_SOURCE_ENTITY_ID)) is not None:
-        device = _async_device_of(call.hass, source_entity_id)
-    else:
-        raise ServiceValidationError(
-            translation_domain=DOMAIN, translation_key="device_target_required"
-        )
+    device = _async_target_device(call)
+    updated, unchanged = async_apply_link(call.hass, call.data[ATTR_ENTITY_ID], device)
+    return _async_response(device, updated, unchanged)
 
-    async_resolve_targets(
-        call.hass,
-        er.async_get(call.hass),
-        call.data[ATTR_ENTITY_ID],
-        device.id,
-        async_tracked_entities(call.hass, DOMAIN),
-    )
-    return _async_link(
-        call.hass, call.data[ATTR_ENTITY_ID], device.id, device.identifiers
+
+async def async_remove_identifier(call: ServiceCall) -> ServiceResponse:
+    """Unlink entities from the device they are linked to."""
+    updated, unchanged = async_apply_link(call.hass, call.data[ATTR_ENTITY_ID], None)
+    return _async_response(None, updated, unchanged)
+
+
+@callback
+def _async_target_device(call: ServiceCall) -> dr.DeviceEntry:
+    """Return the device the call designates, whichever field carries it."""
+    if (device_id := call.data.get(ATTR_DEVICE_ID)) is not None:
+        return async_resolve_device_id(call.hass, device_id)
+    if (identifiers := call.data.get(ATTR_IDENTIFIERS)) is not None:
+        return async_resolve_device(call.hass, identifiers)
+    if (source_entity_id := call.data.get(ATTR_SOURCE_ENTITY_ID)) is not None:
+        return _async_device_of(call.hass, source_entity_id)
+    raise ServiceValidationError(
+        translation_domain=DOMAIN, translation_key="device_target_required"
     )
 
 
@@ -126,47 +125,14 @@ def _async_device_of(hass: HomeAssistant, entity_id: str) -> dr.DeviceEntry:
     return async_resolve_device_id(hass, entry.device_id)
 
 
-async def async_remove_identifier(call: ServiceCall) -> ServiceResponse:
-    """Unlink entities from the device they are linked to."""
-    async_resolve_targets(
-        call.hass,
-        er.async_get(call.hass),
-        call.data[ATTR_ENTITY_ID],
-        None,
-        async_tracked_entities(call.hass, DOMAIN),
-    )
-    return _async_link(call.hass, call.data[ATTR_ENTITY_ID], None, None)
-
-
 @callback
-def _async_link(
-    hass: HomeAssistant,
-    entity_ids: list[str],
-    device_id: str | None,
-    identifiers: Identifiers | None,
+def _async_response(
+    device: dr.DeviceEntry | None, updated: list[str], unchanged: list[str]
 ) -> ServiceResponse:
-    """Apply a device link to every entity and record it for re-application."""
-    entity_registry = er.async_get(hass)
-    resolved = [
-        async_resolve_entry(entity_registry, entity_id).entity_id
-        for entity_id in entity_ids
-    ]
-
-    updated: list[str] = []
-    unchanged: list[str] = []
-    for entity_id in resolved:
-        changed = async_set_device_link(entity_registry, entity_id, device_id)
-        (updated if changed else unchanged).append(entity_id)
-
-    if (reapplier := async_get_reapplier(hass, DOMAIN)) is not None:
-        if identifiers is None:
-            reapplier.async_forget(resolved)
-        else:
-            reapplier.async_track(resolved, identifiers)
-
+    """Report what the call did."""
     return {
-        ATTR_DEVICE_ID: device_id,
-        ATTR_IDENTIFIERS: as_pairs(identifiers) if identifiers else [],
+        ATTR_DEVICE_ID: device.id if device else None,
+        ATTR_IDENTIFIERS: as_pairs(device.identifiers) if device else [],
         ATTR_UPDATED: updated,
         ATTR_UNCHANGED: unchanged,
     }

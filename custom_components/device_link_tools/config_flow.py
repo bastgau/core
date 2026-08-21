@@ -12,7 +12,6 @@ from homeassistant.config_entries import (
 from homeassistant.const import ATTR_DEVICE_ID, ATTR_ENTITY_ID
 from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.selector import (
     DeviceSelector,
     EntitySelector,
@@ -23,18 +22,8 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import DOMAIN
-from .helpers import (
-    async_resolve_device_id,
-    async_resolve_targets,
-    async_set_device_link,
-)
-from .reapply import (
-    DeviceLinkToolsConfigEntry,
-    async_get_reapplier,
-    async_options_with_links,
-    async_stored_links,
-    async_tracked_entities,
-)
+from .helpers import async_resolve_device_id
+from .reapply import DeviceLinkToolsConfigEntry, async_apply_link, async_stored_links
 
 # Failures the add form can report on the field itself; anything else is reported as a
 # generic invalid device.
@@ -95,34 +84,15 @@ class DeviceLinkToolsOptionsFlow(OptionsFlowWithReload):
         """Link entities to a picked device."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            entity_ids: list[str] = user_input[ATTR_ENTITY_ID]
             try:
                 device = async_resolve_device_id(self.hass, user_input[ATTR_DEVICE_ID])
-                entity_registry = er.async_get(self.hass)
-                # Resolve every entity before touching any of them, so a rejected one
-                # does not leave the others half applied.
-                resolved = async_resolve_targets(
-                    self.hass,
-                    entity_registry,
-                    entity_ids,
-                    device.id,
-                    async_tracked_entities(self.hass, DOMAIN),
-                )
-                for entity_id in resolved:
-                    async_set_device_link(entity_registry, entity_id, device.id)
+                async_apply_link(self.hass, user_input[ATTR_ENTITY_ID], device)
             except HomeAssistantError as err:
                 errors["base"] = _form_error(err)
             else:
-                # Record through the reapplier so its in-memory table stays in step;
-                # the options written below are then already up to date.
-                if (reapplier := async_get_reapplier(self.hass, DOMAIN)) is not None:
-                    reapplier.async_track(resolved, device.identifiers)
-                links = async_stored_links(self.config_entry)
-                for entity_id in resolved:
-                    links[entity_id] = device.identifiers
-                return self.async_create_entry(
-                    data=async_options_with_links(self.config_entry, links)
-                )
+                # async_apply_link already wrote the options; handing them back
+                # unchanged just ends the flow.
+                return self.async_create_entry(data=dict(self.config_entry.options))
 
         return self.async_show_form(
             step_id="add_link",
@@ -146,16 +116,8 @@ class DeviceLinkToolsOptionsFlow(OptionsFlowWithReload):
             return self.async_abort(reason="no_links")
 
         if user_input is not None:
-            entity_ids: list[str] = user_input[ATTR_ENTITY_ID]
-            entity_registry = er.async_get(self.hass)
-            for entity_id in entity_ids:
-                async_set_device_link(entity_registry, entity_id, None)
-                links.pop(entity_id, None)
-            if (reapplier := async_get_reapplier(self.hass, DOMAIN)) is not None:
-                reapplier.async_forget(entity_ids)
-            return self.async_create_entry(
-                data=async_options_with_links(self.config_entry, links)
-            )
+            async_apply_link(self.hass, user_input[ATTR_ENTITY_ID], None)
+            return self.async_create_entry(data=dict(self.config_entry.options))
 
         return self.async_show_form(
             step_id="remove_link",

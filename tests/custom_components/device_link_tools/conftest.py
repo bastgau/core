@@ -18,6 +18,21 @@ from tests.common import MockConfigEntry
 DOMAIN = "device_link_tools"
 SOURCE = pathlib.Path(__file__).parents[3] / "custom_components" / DOMAIN
 COMPOSITE_DEVICE_ID = "composite0000000000000000000000"
+SOLAR_POWER = "sensor.solar_power"
+GRID_IMPORT = "sensor.grid_import"
+LINKS = "links"
+
+
+async def async_link(
+    hass: HomeAssistant, entity_id: str, device: dr.DeviceEntry
+) -> None:
+    """Link an entity to a device the way a user would, through the action."""
+    await hass.services.async_call(
+        DOMAIN,
+        "add_identifier",
+        {"entity_id": entity_id, "device_id": device.id},
+        blocking=True,
+    )
 
 
 @pytest.fixture
@@ -216,7 +231,10 @@ async def composite_linked_entity(
 def entity_entry(entity_registry: er.EntityRegistry) -> er.RegistryEntry:
     """Return a registered entity that is not linked to any device."""
     return entity_registry.async_get_or_create(
-        "sensor", "rest", "solar-power", suggested_object_id="solar_power"
+        "sensor",
+        "rest",
+        "solar-power",
+        suggested_object_id="solar_power",
     )
 
 
@@ -224,5 +242,8 @@ def entity_entry(entity_registry: er.EntityRegistry) -> er.RegistryEntry:
 def second_entity_entry(entity_registry: er.EntityRegistry) -> er.RegistryEntry:
     """Return a second registered entity that is not linked to any device."""
     return entity_registry.async_get_or_create(
-        "sensor", "rest", "grid-import", suggested_object_id="grid_import"
+        "sensor",
+        "rest",
+        "grid-import",
+        suggested_object_id="grid_import",
     )

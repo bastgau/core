@@ -10,8 +10,12 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, callback
-from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import entity_registry as er, issue_registry as ir
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.helpers import (
+    device_registry as dr,
+    entity_registry as er,
+    issue_registry as ir,
+)
 from homeassistant.helpers.start import async_at_started
 
 from .const import CONF_LINKS, DOMAIN, LOGGER
@@ -19,7 +23,9 @@ from .helpers import (
     Identifiers,
     as_pairs,
     async_resolve_device,
+    async_resolve_entry,
     async_set_device_link,
+    device_label,
     format_identifiers,
 )
 
@@ -55,6 +61,71 @@ def async_tracked_entities(hass: HomeAssistant, domain: str) -> set[str]:
     if not (entries := hass.config_entries.async_loaded_entries(domain)):
         return set()
     return set(async_stored_links(entries[0]))
+
+
+@callback
+def _async_resolve_targets(
+    hass: HomeAssistant,
+    entity_registry: er.EntityRegistry,
+    entity_ids: list[str],
+    device_id: str | None,
+) -> list[str]:
+    """Resolve the entities to link or unlink, refusing links set elsewhere.
+
+    A link recorded here can be re-pointed or dropped. A link set elsewhere cannot be
+    touched: one an entity's own integration declares is written back on every restart,
+    so it has to be changed where it comes from. A device_id of None checks an unlink,
+    which leaves only an entity that has no link at all untouched.
+    """
+    tracked = async_tracked_entities(hass, DOMAIN)
+    entries = [
+        async_resolve_entry(entity_registry, entity_id) for entity_id in entity_ids
+    ]
+
+    for entry in entries:
+        if entry.device_id in (None, device_id) or entry.entity_id in tracked:
+            continue
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="link_set_elsewhere",
+            translation_placeholders={
+                "entity_id": entry.entity_id,
+                "name": device_label(
+                    dr.async_get(hass).async_get(entry.device_id), entry.device_id
+                ),
+            },
+        )
+
+    return [entry.entity_id for entry in entries]
+
+
+@callback
+def async_apply_link(
+    hass: HomeAssistant, entity_ids: list[str], device: dr.DeviceEntry | None
+) -> tuple[list[str], list[str]]:
+    """Link entities to a device, or unlink them, and record the outcome.
+
+    The single write path: the actions, the options flow and the repair flow all go
+    through it, so the refusals, the registry write and the recorded table stay in step.
+    Returns the entities whose link changed, and those already in that state.
+    """
+    entity_registry = er.async_get(hass)
+    device_id = device.id if device else None
+    resolved = _async_resolve_targets(hass, entity_registry, entity_ids, device_id)
+
+    updated: list[str] = []
+    unchanged: list[str] = []
+    for entity_id in resolved:
+        changed = async_set_device_link(entity_registry, entity_id, device_id)
+        (updated if changed else unchanged).append(entity_id)
+
+    if (reapplier := async_get_reapplier(hass, DOMAIN)) is not None:
+        if device is None:
+            reapplier.async_forget(resolved)
+        else:
+            reapplier.async_track(resolved, device.identifiers)
+
+    return updated, unchanged
 
 
 @callback
