@@ -149,28 +149,13 @@ def async_device_identifiers(
 ) -> tuple[Identifiers, set[tuple[str, str]], str | None]:
     """Return the identifiers, connections and name behind a linked device id.
 
-    An entity can hold the id of a pre-migration composite device, which is not a
-    registered device; the identifiers of the devices it was split into are returned.
+    An entity can hold the id of a pre-migration composite device. async_get synthesizes
+    a read-only composite from the devices it was split into, so the identifiers and
+    connections returned for such an id are the union of theirs.
     """
-    device_registry = dr.async_get(hass)
-    if (device := device_registry.async_get(device_id)) is not None:
-        return (
-            device.identifiers,
-            device.connections,
-            device.name_by_user or device.name,
-        )
-
-    devices = device_registry.async_get_devices_for_composite_device_id(device_id)
-    identifiers = {
-        identifier for device in devices for identifier in device.identifiers
-    }
-    connections = {
-        connection for device in devices for connection in device.connections
-    }
-    name = next(
-        (device.name_by_user or device.name for device in devices if device.name), None
-    )
-    return identifiers, connections, name
+    if (device := dr.async_get(hass).async_get(device_id)) is None:
+        return set(), set(), None
+    return device.identifiers, device.connections, device.name_by_user or device.name
 
 
 @callback

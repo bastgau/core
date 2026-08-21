@@ -105,6 +105,23 @@ async def test_removing_link_stops_reapplying(
     assert entity_registry.async_get(SOLAR_POWER).device_id is None
 
 
+@pytest.mark.usefixtures("entity_entry")
+async def test_link_without_loaded_entry(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    entity_registry: er.EntityRegistry,
+    device: dr.DeviceEntry,
+) -> None:
+    """Test linking still works, without persistence, once the entry is unloaded."""
+    assert await hass.config_entries.async_unload(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    await _async_link(hass)
+
+    assert entity_registry.async_get(SOLAR_POWER).device_id == device.id
+    assert LINKS not in config_entry.options
+
+
 @pytest.mark.usefixtures("enable_custom_integrations", "entity_entry")
 async def test_link_reapplied_at_startup(
     hass: HomeAssistant,

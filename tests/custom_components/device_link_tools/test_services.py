@@ -80,6 +80,9 @@ async def test_read_identifiers(
         pytest.param(
             [{"domain": "mqtt", "identifier": "8848_5"}], id="selector_mapping"
         ),
+        pytest.param(
+            {"mqtt": "8848_5", "zha": "0x00124b0001"}, id="multi_domain_mapping"
+        ),
     ],
 )
 @pytest.mark.usefixtures("entity_entry")
@@ -208,7 +211,9 @@ async def test_service_validation_error(
         pytest.param(":8848_5", id="missing_domain"),
         pytest.param([["mqtt", "8848_5", "extra"]], id="too_many_items"),
         pytest.param([{"domain": "mqtt"}], id="incomplete_mapping"),
+        pytest.param([{"a": "1", "b": "2"}], id="mapping_of_several_domains"),
         pytest.param([12], id="not_an_identifier"),
+        pytest.param(12, id="not_a_list_of_identifiers"),
     ],
 )
 @pytest.mark.usefixtures("entity_entry")
@@ -223,6 +228,28 @@ async def test_add_identifier_invalid_input(
             {"entity_id": SOLAR_POWER, "identifiers": identifiers},
             blocking=True,
         )
+
+
+@pytest.mark.usefixtures("entity_entry", "device")
+async def test_add_identifier_update_rejected(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test a registry rejection is reported as a validation error."""
+
+    def _reject(self: er.EntityRegistry, entity_id: str, **kwargs: Any) -> None:
+        raise ValueError(f"Device {kwargs['device_id']} does not exist")
+
+    monkeypatch.setattr(er.EntityRegistry, "async_update_entity", _reject)
+
+    with pytest.raises(ServiceValidationError) as err:
+        await hass.services.async_call(
+            DOMAIN,
+            "add_identifier",
+            {"entity_id": SOLAR_POWER, "identifiers": "mqtt:8848_5"},
+            blocking=True,
+        )
+
+    assert err.value.translation_key == "update_failed"
 
 
 @pytest.mark.usefixtures("entity_entry")

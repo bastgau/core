@@ -5,7 +5,9 @@ import importlib
 import pathlib
 import shutil
 import sys
+from typing import Any
 
+import attr
 import pytest
 
 from homeassistant.core import HomeAssistant
@@ -15,6 +17,7 @@ from tests.common import MockConfigEntry
 
 DOMAIN = "device_link_tools"
 SOURCE = pathlib.Path(__file__).parents[3] / "custom_components" / DOMAIN
+COMPOSITE_DEVICE_ID = "composite0000000000000000000000"
 
 
 @pytest.fixture
@@ -124,6 +127,89 @@ def device_id(device: dr.DeviceEntry) -> str:
 def other_device_id(other_device: dr.DeviceEntry) -> str:
     """Return the id of the heat pump device."""
     return other_device.id
+
+
+@pytest.fixture
+async def composite_linked_entity(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> str:
+    """Register an entity holding the id of a pre-migration composite device.
+
+    A composite only exists once the device registry has migrated a device that
+    belonged to two config entries, so this needs load_registries=False and loads the
+    registries itself. Returns the composite device id.
+    """
+    owner = MockConfigEntry(domain="mqtt", title="MQTT")
+    owner.add_to_hass(hass)
+    second_owner = MockConfigEntry(domain="tasmota", title="Tasmota")
+    second_owner.add_to_hass(hass)
+
+    hass_storage[dr.STORAGE_KEY] = {
+        "version": 1,
+        "minor_version": 12,
+        "key": dr.STORAGE_KEY,
+        "data": {
+            "devices": [
+                {
+                    "area_id": None,
+                    "config_entries": [owner.entry_id, second_owner.entry_id],
+                    "config_entries_subentries": {
+                        owner.entry_id: [None],
+                        second_owner.entry_id: [None],
+                    },
+                    "configuration_url": None,
+                    "connections": [["mac", "aa:bb:cc:dd:ee:ff"]],
+                    "created_at": "1970-01-01T00:00:00+00:00",
+                    "disabled_by": None,
+                    "entry_type": None,
+                    "hw_version": None,
+                    "id": COMPOSITE_DEVICE_ID,
+                    "identifiers": [["mqtt", "8848_5"], ["tasmota", "8848"]],
+                    "labels": [],
+                    "manufacturer": None,
+                    "model": None,
+                    "model_id": None,
+                    "modified_at": "1970-01-01T00:00:00+00:00",
+                    "name": "Boiler",
+                    "name_by_user": None,
+                    "primary_config_entry": owner.entry_id,
+                    "serial_number": None,
+                    "sw_version": None,
+                    "via_device_id": None,
+                }
+            ],
+            "deleted_devices": [],
+        },
+    }
+
+    dr.async_setup(hass)
+    await dr.async_load(hass)
+    await er.async_load(hass)
+
+    device_registry = dr.async_get(hass)
+    assert COMPOSITE_DEVICE_ID not in device_registry.devices
+    assert (
+        len(
+            device_registry.async_get_devices_for_composite_device_id(
+                COMPOSITE_DEVICE_ID
+            )
+        )
+        == 2
+    )
+
+    entity_registry = er.async_get(hass)
+    entity_id = entity_registry.async_get_or_create(
+        "sensor", "rest", "solar-power", suggested_object_id="solar_power"
+    ).entity_id
+
+    # An entity migrated alongside the device still holds the composite id, a state
+    # async_update_entity refuses to produce. Write the entry the way the registry
+    # writes it internally, which is also what loading it from storage would give.
+    entity_registry.entities[entity_id] = attr.evolve(
+        entity_registry.entities[entity_id], device_id=COMPOSITE_DEVICE_ID
+    )
+
+    return COMPOSITE_DEVICE_ID
 
 
 @pytest.fixture
