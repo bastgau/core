@@ -443,13 +443,13 @@ async def test_read_allowed_for_non_admin(
 
 
 @pytest.mark.usefixtures("entity_entry")
-async def test_add_identifier_refuses_a_second_device(
+async def test_add_identifier_refuses_a_link_set_elsewhere(
     hass: HomeAssistant,
     entity_registry: er.EntityRegistry,
     device: dr.DeviceEntry,
     other_device: dr.DeviceEntry,
 ) -> None:
-    """Test an entity already linked is not moved to another device."""
+    """Test an entity linked by something else is not moved to another device."""
     entity_registry.async_update_entity(SOLAR_POWER, device_id=device.id)
 
     with pytest.raises(ServiceValidationError) as err:
@@ -465,23 +465,21 @@ async def test_add_identifier_refuses_a_second_device(
 
 
 @pytest.mark.usefixtures("entity_entry")
-async def test_moving_a_link_takes_unlinking_first(
+async def test_moving_a_link_we_recorded(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,
     entity_registry: er.EntityRegistry,
     device: dr.DeviceEntry,
     other_device: dr.DeviceEntry,
 ) -> None:
-    """Test the supported way to move an entity from one device to another."""
+    """Test a link recorded here is re-pointed in a single call."""
     await hass.services.async_call(
         DOMAIN,
         "add_identifier",
         {"entity_id": SOLAR_POWER, "device_id": device.id},
         blocking=True,
     )
-    await hass.services.async_call(
-        DOMAIN, "remove_identifier", {"entity_id": SOLAR_POWER}, blocking=True
-    )
+
     await hass.services.async_call(
         DOMAIN,
         "add_identifier",

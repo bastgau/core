@@ -1,6 +1,6 @@
 """Helpers to read and rewrite the device link of an entity registry entry."""
 
-from collections.abc import Mapping
+from collections.abc import Container, Mapping
 from typing import Any
 
 import voluptuous as vol
@@ -87,18 +87,20 @@ def async_resolve_targets(
     entity_registry: er.EntityRegistry,
     entity_ids: list[str],
     device_id: str,
+    tracked: Container[str],
 ) -> list[str]:
-    """Resolve the entities to link, refusing any already linked to another device.
+    """Resolve the entities to link, refusing those linked by something else.
 
-    Moving an entity away from the device its own integration declares would be undone
-    on the next restart, so an existing link has to be removed deliberately first.
+    A link recorded here can be re-pointed straight away. A link set elsewhere cannot:
+    moving an entity away from the device its own integration declares would be undone
+    on the next restart, so it has to be removed deliberately first.
     """
     entries = [
         async_resolve_entry(entity_registry, entity_id) for entity_id in entity_ids
     ]
 
     for entry in entries:
-        if entry.device_id is None or entry.device_id == device_id:
+        if entry.device_id in (None, device_id) or entry.entity_id in tracked:
             continue
         device = dr.async_get(hass).async_get(entry.device_id)
         raise ServiceValidationError(

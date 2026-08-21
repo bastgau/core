@@ -33,6 +33,7 @@ from .reapply import (
     async_get_reapplier,
     async_options_with_links,
     async_stored_links,
+    async_tracked_entities,
 )
 
 # Failures the add form can report on the field itself; anything else is reported as a
@@ -101,7 +102,11 @@ class DeviceLinkToolsOptionsFlow(OptionsFlowWithReload):
                 # Resolve every entity before touching any of them, so a rejected one
                 # does not leave the others half applied.
                 resolved = async_resolve_targets(
-                    self.hass, entity_registry, entity_ids, device.id
+                    self.hass,
+                    entity_registry,
+                    entity_ids,
+                    device.id,
+                    async_tracked_entities(self.hass, DOMAIN),
                 )
                 for entity_id in resolved:
                     async_set_device_link(entity_registry, entity_id, device.id)

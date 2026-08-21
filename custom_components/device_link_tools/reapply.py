@@ -50,6 +50,14 @@ def async_options_with_links(
 
 
 @callback
+def async_tracked_entities(hass: HomeAssistant, domain: str) -> set[str]:
+    """Return the entities whose device link this integration recorded."""
+    if not (entries := hass.config_entries.async_loaded_entries(domain)):
+        return set()
+    return set(async_stored_links(entries[0]))
+
+
+@callback
 def async_issue_id(entity_id: str) -> str:
     """Return the repair issue id reporting that a link cannot be applied."""
     return f"unresolved_link_{entity_id}"

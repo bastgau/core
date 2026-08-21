@@ -136,6 +136,36 @@ async def test_remove_link_without_links(
 
 
 @pytest.mark.usefixtures("entity_entry")
+async def test_add_link_moves_a_link_we_recorded(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    entity_registry: er.EntityRegistry,
+    device: dr.DeviceEntry,
+    other_device: dr.DeviceEntry,
+) -> None:
+    """Test a link recorded here is re-pointed from the form in one go."""
+    await hass.services.async_call(
+        "device_link_tools",
+        "add_identifier",
+        {"entity_id": SOLAR_POWER, "device_id": device.id},
+        blocking=True,
+    )
+
+    flow_id = await _async_menu(hass, config_entry)
+    await hass.config_entries.options.async_configure(
+        flow_id, {"next_step_id": "add_link"}
+    )
+    result = await hass.config_entries.options.async_configure(
+        flow_id, {"entity_id": [SOLAR_POWER], "device_id": other_device.id}
+    )
+    await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entity_registry.async_get(SOLAR_POWER).device_id == other_device.id
+    assert config_entry.options[LINKS] == {SOLAR_POWER: [["mqtt", "9000_1"]]}
+
+
+@pytest.mark.usefixtures("entity_entry")
 async def test_add_link_refuses_an_already_linked_entity(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,
@@ -143,7 +173,7 @@ async def test_add_link_refuses_an_already_linked_entity(
     device: dr.DeviceEntry,
     other_device: dr.DeviceEntry,
 ) -> None:
-    """Test the form reports an entity that is already on another device."""
+    """Test the form reports an entity linked by something other than us."""
     entity_registry.async_update_entity(SOLAR_POWER, device_id=device.id)
     flow_id = await _async_menu(hass, config_entry)
     await hass.config_entries.options.async_configure(

@@ -40,7 +40,7 @@ from .helpers import (
     async_set_device_link,
     parse_identifiers,
 )
-from .reapply import async_get_reapplier
+from .reapply import async_get_reapplier, async_tracked_entities
 
 ENTITY_IDS = vol.All(cv.ensure_list, cv.entity_ids_or_uuids)
 
@@ -104,6 +104,7 @@ async def async_add_identifier(call: ServiceCall) -> ServiceResponse:
         er.async_get(call.hass),
         call.data[ATTR_ENTITY_ID],
         device.id,
+        async_tracked_entities(call.hass, DOMAIN),
     )
     return _async_link(
         call.hass, call.data[ATTR_ENTITY_ID], device.id, device.identifiers
