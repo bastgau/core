@@ -16,7 +16,7 @@ from homeassistant.helpers.typing import UNDEFINED
 
 from .conftest import DOMAIN
 
-from tests.common import MockUser
+from tests.common import MockConfigEntry, MockUser
 
 SOLAR_POWER = "sensor.solar_power"
 GRID_IMPORT = "sensor.grid_import"
@@ -103,6 +103,51 @@ async def test_add_identifier_accepted_formats(
     assert entity_registry.async_get(SOLAR_POWER).device_id == device.id
 
 
+@pytest.mark.usefixtures("entity_entry")
+async def test_add_identifier_by_device_id(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    entity_registry: er.EntityRegistry,
+    device: dr.DeviceEntry,
+) -> None:
+    """Test picking the device by id records the same link as its identifiers."""
+    response = await hass.services.async_call(
+        DOMAIN,
+        "add_identifier",
+        {"entity_id": SOLAR_POWER, "device_id": device.id},
+        blocking=True,
+        return_response=True,
+    )
+
+    assert entity_registry.async_get(SOLAR_POWER).device_id == device.id
+    assert response["identifiers"] == [["mqtt", "8848_5"]]
+    assert config_entry.options["links"] == {SOLAR_POWER: [["mqtt", "8848_5"]]}
+
+
+@pytest.mark.usefixtures("entity_entry", "owning_entry")
+async def test_add_identifier_device_without_identifiers(
+    hass: HomeAssistant,
+    device_registry: dr.DeviceRegistry,
+    owning_entry: MockConfigEntry,
+) -> None:
+    """Test a device known only by its connections cannot hold a durable link."""
+    device = device_registry.async_get_or_create(
+        config_entry_id=owning_entry.entry_id,
+        connections={(dr.CONNECTION_NETWORK_MAC, "11:22:33:44:55:66")},
+        name="Connections only",
+    )
+
+    with pytest.raises(ServiceValidationError) as err:
+        await hass.services.async_call(
+            DOMAIN,
+            "add_identifier",
+            {"entity_id": SOLAR_POWER, "device_id": device.id},
+            blocking=True,
+        )
+
+    assert err.value.translation_key == "device_without_identifiers"
+
+
 @pytest.mark.usefixtures("entity_entry", "second_entity_entry")
 async def test_add_identifier_multiple_entities(
     hass: HomeAssistant,
@@ -181,6 +226,20 @@ async def test_add_identifier_reports_unchanged(
             (),
             "source_not_linked",
             id="clone_source_has_no_device",
+        ),
+        pytest.param(
+            "add_identifier",
+            {"entity_id": SOLAR_POWER, "device_id": "does-not-exist"},
+            (),
+            "device_id_unknown",
+            id="device_id_does_not_exist",
+        ),
+        pytest.param(
+            "add_identifier",
+            {"entity_id": SOLAR_POWER},
+            (),
+            "device_target_required",
+            id="neither_device_nor_identifiers",
         ),
     ],
 )

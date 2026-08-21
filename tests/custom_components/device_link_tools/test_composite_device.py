@@ -3,6 +3,7 @@
 import pytest
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
 
 from .conftest import DOMAIN
 
@@ -37,3 +38,25 @@ async def test_read_identifiers_of_composite_device(
         "connections": [["mac", "aa:bb:cc:dd:ee:ff"]],
         "name": "Boiler",
     }
+
+
+@pytest.mark.parametrize("load_registries", [False])
+@pytest.mark.usefixtures("enable_custom_integrations")
+async def test_add_identifier_refuses_composite_device_id(
+    hass: HomeAssistant, composite_linked_entity: str
+) -> None:
+    """Test a composite id cannot be picked as the target device."""
+    entry = MockConfigEntry(domain=DOMAIN, title="Device link tools")
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    with pytest.raises(ServiceValidationError) as err:
+        await hass.services.async_call(
+            DOMAIN,
+            "add_identifier",
+            {"entity_id": SOLAR_POWER, "device_id": composite_linked_entity},
+            blocking=True,
+        )
+
+    assert err.value.translation_key == "device_id_composite"

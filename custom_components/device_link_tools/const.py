@@ -20,7 +20,3 @@ ATTR_UNCHANGED = "unchanged"
 ATTR_UPDATED = "updated"
 
 CONF_LINKS = "links"
-
-# A device that keeps failing to resolve is logged at debug level after this many
-# consecutive failures, so a permanently missing device does not spam the log.
-REAPPLY_FAILURE_LOG_LIMIT = 3

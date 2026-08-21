@@ -14,8 +14,11 @@ add_identifier:
       selector:
         entity:
           multiple: true
+    device_id:
+      example: 1a2b3c4d5e6f7890abcdef1234567890
+      selector:
+        device:
     identifiers:
-      required: true
       example: '[{"domain": "mqtt", "identifier": "8848_5"}]'
       selector:
         object:

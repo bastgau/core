@@ -3,13 +3,18 @@
 import pytest
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import (
+    device_registry as dr,
+    entity_registry as er,
+    issue_registry as ir,
+)
 
 from .conftest import DOMAIN
 
 from tests.common import MockConfigEntry
 
 SOLAR_POWER = "sensor.solar_power"
+ISSUE_ID = f"unresolved_link_{SOLAR_POWER}"
 LINKS = "links"
 
 
@@ -187,18 +192,35 @@ async def test_link_follows_renamed_entity(
 
 
 @pytest.mark.usefixtures("config_entry", "entity_entry")
-async def test_missing_device_logs_warning(
+async def test_missing_device_raises_issue(
     hass: HomeAssistant,
-    caplog: pytest.LogCaptureFixture,
+    issue_registry: ir.IssueRegistry,
     device_registry: dr.DeviceRegistry,
     entity_registry: er.EntityRegistry,
     device: dr.DeviceEntry,
 ) -> None:
-    """Test a link that can no longer be resolved warns instead of raising."""
+    """Test a link that can no longer be resolved raises a repair issue."""
     await _async_link(hass)
 
     device_registry.async_remove_device(device.id)
     await hass.async_block_till_done()
 
     assert entity_registry.async_get(SOLAR_POWER).device_id is None
-    assert "Could not re-link sensor.solar_power" in caplog.text
+    assert issue_registry.async_get_issue(DOMAIN, ISSUE_ID) is not None
+
+
+@pytest.mark.usefixtures("config_entry", "entity_entry", "device")
+async def test_issue_cleared_when_link_applies(
+    hass: HomeAssistant,
+    issue_registry: ir.IssueRegistry,
+    entity_registry: er.EntityRegistry,
+) -> None:
+    """Test the repair issue disappears once the link can be applied again."""
+    await _async_link(hass)
+
+    assert issue_registry.async_get_issue(DOMAIN, ISSUE_ID) is None
+
+    entity_registry.async_update_entity(SOLAR_POWER, device_id=None)
+    await hass.async_block_till_done()
+
+    assert issue_registry.async_get_issue(DOMAIN, ISSUE_ID) is None

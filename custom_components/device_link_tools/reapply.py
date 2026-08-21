@@ -11,10 +11,10 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import entity_registry as er, issue_registry as ir
 from homeassistant.helpers.start import async_at_started
 
-from .const import CONF_LINKS, LOGGER, REAPPLY_FAILURE_LOG_LIMIT
+from .const import CONF_LINKS, DOMAIN, LOGGER
 from .helpers import (
     Identifiers,
     as_pairs,
@@ -26,6 +26,35 @@ from .helpers import (
 type DeviceLinkToolsConfigEntry = ConfigEntry[DeviceLinkReapplier]
 
 
+@callback
+def async_stored_links(entry: DeviceLinkToolsConfigEntry) -> dict[str, Identifiers]:
+    """Return the links stored in the config entry options."""
+    return {
+        entity_id: {(pair[0], pair[1]) for pair in pairs}
+        for entity_id, pairs in entry.options.get(CONF_LINKS, {}).items()
+    }
+
+
+@callback
+def async_options_with_links(
+    entry: DeviceLinkToolsConfigEntry, links: dict[str, Identifiers]
+) -> dict[str, Any]:
+    """Return the config entry options carrying the given links."""
+    return {
+        **entry.options,
+        CONF_LINKS: {
+            entity_id: as_pairs(identifiers)
+            for entity_id, identifiers in sorted(links.items())
+        },
+    }
+
+
+@callback
+def async_issue_id(entity_id: str) -> str:
+    """Return the repair issue id reporting that a link cannot be applied."""
+    return f"unresolved_link_{entity_id}"
+
+
 class DeviceLinkReapplier:
     """Re-apply the device links the owning integrations reset."""
 
@@ -33,11 +62,7 @@ class DeviceLinkReapplier:
         """Initialize from the links stored in the config entry options."""
         self.hass = hass
         self.entry = entry
-        self._links: dict[str, Identifiers] = {
-            entity_id: {(pair[0], pair[1]) for pair in pairs}
-            for entity_id, pairs in entry.options.get(CONF_LINKS, {}).items()
-        }
-        self._failures: dict[str, int] = {}
+        self._links = async_stored_links(entry)
 
     @callback
     def async_setup(self) -> None:
@@ -56,7 +81,7 @@ class DeviceLinkReapplier:
         """Record the device link of entities so it can be re-applied."""
         for entity_id in entity_ids:
             self._links[entity_id] = identifiers
-            self._failures.pop(entity_id, None)
+            ir.async_delete_issue(self.hass, DOMAIN, async_issue_id(entity_id))
         self._async_save()
 
     @callback
@@ -70,17 +95,13 @@ class DeviceLinkReapplier:
         if not forgotten:
             return
         for entity_id in forgotten:
-            self._failures.pop(entity_id, None)
+            ir.async_delete_issue(self.hass, DOMAIN, async_issue_id(entity_id))
         self._async_save()
 
     @callback
     def _async_save(self) -> None:
-        links = {
-            entity_id: as_pairs(identifiers)
-            for entity_id, identifiers in sorted(self._links.items())
-        }
         self.hass.config_entries.async_update_entry(
-            self.entry, options={**self.entry.options, CONF_LINKS: links}
+            self.entry, options=async_options_with_links(self.entry, self._links)
         )
 
     @callback
@@ -114,7 +135,7 @@ class DeviceLinkReapplier:
         """Schedule the work outside of the registry update being observed."""
         data = event.data
         if data["action"] == "remove":
-            self.hass.loop.call_soon(self._async_forget_removed, data["entity_id"])
+            self.hass.loop.call_soon(self.async_forget, [data["entity_id"]])
         elif (old_entity_id := data.get("old_entity_id")) is not None:
             self.hass.loop.call_soon(
                 self._async_rename, old_entity_id, data["entity_id"]
@@ -123,20 +144,12 @@ class DeviceLinkReapplier:
             self.hass.loop.call_soon(self._async_reapply, data["entity_id"])
 
     @callback
-    def _async_forget_removed(self, entity_id: str) -> None:
-        """Drop the link of an entity that left the registry."""
-        if self._links.pop(entity_id, None) is not None:
-            self._failures.pop(entity_id, None)
-            self._async_save()
-
-    @callback
     def _async_rename(self, old_entity_id: str, entity_id: str) -> None:
         """Move the link of a renamed entity to its new entity id."""
         if (identifiers := self._links.pop(old_entity_id, None)) is None:
             return
+        ir.async_delete_issue(self.hass, DOMAIN, async_issue_id(old_entity_id))
         self._links[entity_id] = identifiers
-        if failures := self._failures.pop(old_entity_id, 0):
-            self._failures[entity_id] = failures
         self._async_save()
         self._async_reapply(entity_id)
 
@@ -157,23 +170,36 @@ class DeviceLinkReapplier:
             device = async_resolve_device(self.hass, identifiers)
             async_set_device_link(entity_registry, entity_id, device.id)
         except HomeAssistantError as err:
-            self._async_log_failure(entity_id, identifiers, err)
+            self._async_report_unresolved(entity_id, identifiers, err)
             return
 
-        self._failures.pop(entity_id, None)
+        ir.async_delete_issue(self.hass, DOMAIN, async_issue_id(entity_id))
         LOGGER.debug("Re-linked %s to device %s", entity_id, device.id)
 
     @callback
-    def _async_log_failure(
+    def _async_report_unresolved(
         self, entity_id: str, identifiers: Identifiers, err: HomeAssistantError
     ) -> None:
-        failures = self._failures[entity_id] = self._failures.get(entity_id, 0) + 1
-        log = LOGGER.debug if failures > REAPPLY_FAILURE_LOG_LIMIT else LOGGER.warning
-        log(
+        """Raise a repair issue asking the user to pick the device again."""
+        LOGGER.debug(
             "Could not re-link %s to the device with identifiers %s: %s",
             entity_id,
             format_identifiers(identifiers),
             err,
+        )
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            async_issue_id(entity_id),
+            data={"entry_id": self.entry.entry_id, "entity_id": entity_id},
+            is_fixable=True,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key="unresolved_link",
+            translation_placeholders={
+                "entity_id": entity_id,
+                "identifiers": format_identifiers(identifiers),
+                "error": str(err),
+            },
         )
 
 

@@ -53,7 +53,8 @@ name: Boiler
 
 ### `device_link_tools.add_identifier`
 
-Links one or more entities to the device carrying the given identifiers.
+Links one or more entities to a device, given either as a device or as the identifiers it
+carries. The two are mutually exclusive; the device picker is the easy one from the UI.
 
 ```yaml
 action: device_link_tools.add_identifier
@@ -61,8 +62,19 @@ data:
   entity_id:
     - sensor.solar_power
     - sensor.grid_import
+  device_id: 9f2c1e...
+```
+
+```yaml
+action: device_link_tools.add_identifier
+data:
+  entity_id: sensor.solar_power
   identifiers: mqtt:8848_5
 ```
+
+Whichever you use, the link is recorded by the device's **identifiers**, so it survives a
+device being recreated. A device that carries no identifiers at all (known only by its
+connections) is refused, because such a link could not be restored after a restart.
 
 Identifiers can be written in any of these forms:
 
@@ -99,6 +111,22 @@ data:
 
 The three mutating actions are admin-only. Automations and scripts run without a user
 context and are unaffected.
+
+## From the UI
+
+**Settings → Devices & services → Device link tools → Configure** offers the same two
+operations with pickers: *Link entities to a device* (an entity picker and a device
+picker) and *Unlink entities*, which lists what is currently linked. This mirrors how the
+template helper lets you pick a device, and writes to the same recorded links the actions
+use.
+
+## When a link can no longer be applied
+
+If the device recorded for an entity can no longer be identified — it was removed, or it
+was split between config entries so its identifiers now match several devices — a
+**repairable issue** appears under Settings → System → Repairs. Fixing it asks for a
+device again, or lets you submit nothing to stop tracking that entity. Until then the
+entity simply stays unlinked; nothing is retried in a loop.
 
 ## Links survive restarts
 

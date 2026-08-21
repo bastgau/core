@@ -32,6 +32,7 @@ from .helpers import (
     as_pairs,
     async_device_identifiers,
     async_resolve_device,
+    async_resolve_device_id,
     async_resolve_entry,
     async_set_device_link,
     parse_identifiers,
@@ -47,7 +48,8 @@ READ_IDENTIFIERS_SCHEMA = vol.Schema(
 ADD_IDENTIFIER_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_ENTITY_ID): ENTITY_IDS,
-        vol.Required(ATTR_IDENTIFIERS): parse_identifiers,
+        vol.Exclusive(ATTR_IDENTIFIERS, "device"): parse_identifiers,
+        vol.Exclusive(ATTR_DEVICE_ID, "device"): cv.string,
     }
 )
 
@@ -88,8 +90,16 @@ async def async_read_identifiers(call: ServiceCall) -> ServiceResponse:
 
 
 async def async_add_identifier(call: ServiceCall) -> ServiceResponse:
-    """Link entities to the device matching the given identifiers."""
-    device = async_resolve_device(call.hass, call.data[ATTR_IDENTIFIERS])
+    """Link entities to a device given by its identifiers or by its id."""
+    if (device_id := call.data.get(ATTR_DEVICE_ID)) is not None:
+        device = async_resolve_device_id(call.hass, device_id)
+    elif (identifiers := call.data.get(ATTR_IDENTIFIERS)) is not None:
+        device = async_resolve_device(call.hass, identifiers)
+    else:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN, translation_key="device_target_required"
+        )
+
     return _async_link(
         call.hass, call.data[ATTR_ENTITY_ID], device.id, device.identifiers
     )

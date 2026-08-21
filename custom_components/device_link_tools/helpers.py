@@ -144,6 +144,43 @@ def async_resolve_device(
 
 
 @callback
+def async_resolve_device_id(hass: HomeAssistant, device_id: str) -> dr.DeviceEntry:
+    """Resolve a device id to a device an entity can be linked to."""
+    device_registry = dr.async_get(hass)
+
+    # True for a pre-migration composite id, False for a registered device, None for an
+    # unknown one. Check it first: async_get synthesizes a composite rather than
+    # returning None, and the entity registry then declines the link.
+    if device_registry.async_is_composite_device_id(device_id):
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="device_id_composite",
+            translation_placeholders={"device_id": device_id},
+        )
+
+    if (device := device_registry.async_get(device_id)) is None:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="device_id_unknown",
+            translation_placeholders={"device_id": device_id},
+        )
+
+    if not device.identifiers:
+        # The link is recorded by identifiers so it can be re-applied; a device that has
+        # none could only be linked until the next restart.
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="device_without_identifiers",
+            translation_placeholders={
+                "device_id": device_id,
+                "name": device.name_by_user or device.name or device_id,
+            },
+        )
+
+    return device
+
+
+@callback
 def async_device_identifiers(
     hass: HomeAssistant, device_id: str
 ) -> tuple[Identifiers, set[tuple[str, str]], str | None]:
