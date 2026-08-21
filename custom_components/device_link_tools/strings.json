@@ -25,9 +25,6 @@
     "device_without_identifiers": {
       "message": "The device {name} has no identifiers, so the link could not be restored after a restart."
     },
-    "entity_already_linked": {
-      "message": "{entity_id} is already linked to {name}, by something other than this integration. Unlink it first if you want to move it: a link its own integration declares would be put back on the next restart anyway."
-    },
     "entity_not_registered": {
       "message": "{entity_id} has no entity registry entry, so it cannot be linked to a device. An entity only gets one when its integration gives it a unique ID; add a unique_id to its configuration and reload it."
     },
@@ -36,6 +33,9 @@
     },
     "link_refused": {
       "message": "The entity registry refused to link {entity_id} to the device {device_id}, because that device id belongs to a device that was split between config entries. Use the identifiers of one of the resulting devices instead."
+    },
+    "link_set_elsewhere": {
+      "message": "{entity_id} is linked to {name} by something other than this integration, so that link cannot be changed from here. A link an entity's own integration declares is written back on every restart; change it where it comes from."
     },
     "source_not_linked": {
       "message": "{entity_id} is not linked to any device, so there is no device to copy."
@@ -77,9 +77,9 @@
       "device_id_composite": "That device was split between config entries. Pick one of the resulting devices.",
       "device_id_unknown": "That device no longer exists.",
       "device_without_identifiers": "That device has no identifiers, so the link could not be restored after a restart.",
-      "entity_already_linked": "One of the entities is already linked to another device, by something other than this integration. Unlink it first.",
       "entity_not_registered": "One of the entities has no entity registry entry. An entity only gets one when its integration gives it a unique ID.",
-      "invalid_device": "The entities could not be linked to that device."
+      "invalid_device": "The entities could not be linked to that device.",
+      "link_set_elsewhere": "One of the entities is linked to its device by something other than this integration, so that link cannot be changed from here."
     },
     "step": {
       "add_link": {

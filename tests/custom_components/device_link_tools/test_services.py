@@ -347,8 +347,13 @@ async def test_remove_identifier(
     entity_registry: er.EntityRegistry,
     device: dr.DeviceEntry,
 ) -> None:
-    """Test unlinking an entity from its device."""
-    entity_registry.async_update_entity(SOLAR_POWER, device_id=device.id)
+    """Test unlinking an entity from the device this integration put it on."""
+    await hass.services.async_call(
+        DOMAIN,
+        "add_identifier",
+        {"entity_id": SOLAR_POWER, "device_id": device.id},
+        blocking=True,
+    )
 
     response = await hass.services.async_call(
         DOMAIN,
@@ -460,7 +465,7 @@ async def test_add_identifier_refuses_a_link_set_elsewhere(
             blocking=True,
         )
 
-    assert err.value.translation_key == "entity_already_linked"
+    assert err.value.translation_key == "link_set_elsewhere"
     assert entity_registry.async_get(SOLAR_POWER).device_id == device.id
 
 
@@ -490,3 +495,36 @@ async def test_moving_a_link_we_recorded(
 
     assert entity_registry.async_get(SOLAR_POWER).device_id == other_device.id
     assert config_entry.options["links"] == {SOLAR_POWER: [["mqtt", "9000_1"]]}
+
+
+@pytest.mark.usefixtures("entity_entry")
+async def test_remove_identifier_refuses_a_link_set_elsewhere(
+    hass: HomeAssistant,
+    entity_registry: er.EntityRegistry,
+    device: dr.DeviceEntry,
+) -> None:
+    """Test a link this integration did not record is not removed either."""
+    entity_registry.async_update_entity(SOLAR_POWER, device_id=device.id)
+
+    with pytest.raises(ServiceValidationError) as err:
+        await hass.services.async_call(
+            DOMAIN, "remove_identifier", {"entity_id": SOLAR_POWER}, blocking=True
+        )
+
+    assert err.value.translation_key == "link_set_elsewhere"
+    assert entity_registry.async_get(SOLAR_POWER).device_id == device.id
+
+
+@pytest.mark.usefixtures("entity_entry")
+async def test_remove_identifier_of_an_unlinked_entity(hass: HomeAssistant) -> None:
+    """Test unlinking an entity that has no device is a no-op, not an error."""
+    response = await hass.services.async_call(
+        DOMAIN,
+        "remove_identifier",
+        {"entity_id": SOLAR_POWER},
+        blocking=True,
+        return_response=True,
+    )
+
+    assert response["updated"] == []
+    assert response["unchanged"] == [SOLAR_POWER]

@@ -185,5 +185,5 @@ async def test_add_link_refuses_an_already_linked_entity(
     )
 
     assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "entity_already_linked"}
+    assert result["errors"] == {"base": "link_set_elsewhere"}
     assert entity_registry.async_get(SOLAR_POWER).device_id == device.id

@@ -111,24 +111,29 @@ data:
 The two mutating actions are admin-only. Automations and scripts run without a user
 context and are unaffected.
 
-## Moving an entity to another device
+## This integration only touches its own links
 
 An entity is linked to **at most one device** — `RegistryEntry.device_id` is a single
 field — so linking to a second device means moving, not adding.
 
-- A link **recorded here** is re-pointed in one call: call `add_identifier` again with
-  the new device.
-- A link set **elsewhere** is refused. Unlink it first with `remove_identifier` if you
-  really want to move it.
-- Re-linking to the device already in place is allowed and reported as `unchanged`, so
-  running the same script twice is safe.
+Both mutating actions only act on a link this integration recorded:
 
-The refusal exists because moving an entity away from a device its **own integration**
-declares does not last. An MQTT sensor with `device.identifiers`, or a template helper
-with a `device_id`, gets its device written back by the entity platform on the next
-restart, and the re-application deliberately does not fight that: it only fills a link
-that is empty. Without the refusal the action would report success for a move that
-disappears at the next restart.
+- a link **recorded here** can be re-pointed to another device, or removed, in one call;
+- a link set **elsewhere** is refused, by `add_identifier` and by `remove_identifier`
+  alike;
+- an entity with **no** link is linked as usual, and unlinking it is a no-op reported as
+  `unchanged` — running the same script twice is safe.
+
+The reason is that a link an entity's **own integration** declares cannot be changed from
+here at all. An MQTT sensor with `device.identifiers`, or a template helper with a
+`device_id`, gets its device written back by the entity platform on every restart, and
+the re-application deliberately does not fight that: it only fills a link that is empty.
+Moving or removing such a link would look like it worked and be undone at the next
+restart, so it is refused instead — change it where it comes from: the helper's device
+option, the MQTT discovery payload, and so on.
+
+The **Unlink entities** step of the options flow lists only the entities this integration
+recorded, for the same reason.
 
 ## From the UI
 

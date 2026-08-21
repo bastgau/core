@@ -128,6 +128,13 @@ def _async_device_of(hass: HomeAssistant, entity_id: str) -> dr.DeviceEntry:
 
 async def async_remove_identifier(call: ServiceCall) -> ServiceResponse:
     """Unlink entities from the device they are linked to."""
+    async_resolve_targets(
+        call.hass,
+        er.async_get(call.hass),
+        call.data[ATTR_ENTITY_ID],
+        None,
+        async_tracked_entities(call.hass, DOMAIN),
+    )
     return _async_link(call.hass, call.data[ATTR_ENTITY_ID], None, None)
 
 

@@ -86,14 +86,15 @@ def async_resolve_targets(
     hass: HomeAssistant,
     entity_registry: er.EntityRegistry,
     entity_ids: list[str],
-    device_id: str,
+    device_id: str | None,
     tracked: Container[str],
 ) -> list[str]:
-    """Resolve the entities to link, refusing those linked by something else.
+    """Resolve the entities to link or unlink, refusing links set elsewhere.
 
-    A link recorded here can be re-pointed straight away. A link set elsewhere cannot:
-    moving an entity away from the device its own integration declares would be undone
-    on the next restart, so it has to be removed deliberately first.
+    A link recorded here can be re-pointed or dropped. A link set elsewhere cannot be
+    touched: one an entity's own integration declares is written back on every restart,
+    so it has to be changed where it comes from. Passing device_id None checks an
+    unlink, which only leaves an entity that has no link at all untouched.
     """
     entries = [
         async_resolve_entry(entity_registry, entity_id) for entity_id in entity_ids
@@ -105,7 +106,7 @@ def async_resolve_targets(
         device = dr.async_get(hass).async_get(entry.device_id)
         raise ServiceValidationError(
             translation_domain=DOMAIN,
-            translation_key="entity_already_linked",
+            translation_key="link_set_elsewhere",
             translation_placeholders={
                 "entity_id": entry.entity_id,
                 "name": (device and (device.name_by_user or device.name))
