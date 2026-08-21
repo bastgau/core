@@ -26,22 +26,14 @@ def parse_identifier(value: Any) -> tuple[str, str]:
         return (domain, identifier)
 
     if isinstance(value, Mapping):
-        if CONF_DOMAIN in value or ATTR_IDENTIFIER in value:
-            if (domain := value.get(CONF_DOMAIN)) is None or (
-                identifier := value.get(ATTR_IDENTIFIER)
-            ) is None:
-                raise vol.Invalid(
-                    "expected a mapping with the keys 'domain' and 'identifier', got "
-                    f"{sorted(str(key) for key in value)}"
-                )
-            return (str(domain), str(identifier))
-        if len(value) == 1:
-            domain, identifier = next(iter(value.items()))
-            return (str(domain), str(identifier))
-        raise vol.Invalid(
-            "expected a mapping of a single domain to a single identifier, got "
-            f"{sorted(str(key) for key in value)}"
-        )
+        if (domain := value.get(CONF_DOMAIN)) is None or (
+            identifier := value.get(ATTR_IDENTIFIER)
+        ) is None:
+            raise vol.Invalid(
+                "expected a mapping with the keys 'domain' and 'identifier', got "
+                f"{sorted(str(key) for key in value)}"
+            )
+        return (str(domain), str(identifier))
 
     if isinstance(value, (list, tuple)):
         if len(value) != 2:
@@ -56,27 +48,10 @@ def parse_identifier(value: Any) -> tuple[str, str]:
 def parse_identifiers(value: Any) -> Identifiers:
     """Validate the identifiers field into a set of (domain, identifier) tuples.
 
-    A bare pair of colon-free strings - ["mqtt", "8848_5"] - is read as one identifier
-    rather than as two malformed ones.
+    A string or a mapping may be given on its own or in a list. A pair has to be inside
+    a list, a bare two-item list being read as two identifiers.
     """
-    items: Any
-    if isinstance(value, Mapping):
-        if CONF_DOMAIN in value or ATTR_IDENTIFIER in value or len(value) <= 1:
-            items = [value]
-        else:
-            items = [{domain: identifier} for domain, identifier in value.items()]
-    elif isinstance(value, str):
-        items = [value]
-    elif isinstance(value, (list, tuple)):
-        if len(value) == 2 and all(
-            isinstance(item, str) and ":" not in item for item in value
-        ):
-            items = [value]
-        else:
-            items = value
-    else:
-        raise vol.Invalid(f"expected a list of device identifiers, got {value!r}")
-
+    items = value if isinstance(value, list) else [value]
     if not (identifiers := {parse_identifier(item) for item in items}):
         raise vol.Invalid("expected at least one device identifier")
     return identifiers

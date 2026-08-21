@@ -73,16 +73,9 @@ async def test_read_identifiers(
     [
         pytest.param("mqtt:8848_5", id="colon_string"),
         pytest.param(["mqtt:8848_5"], id="colon_string_list"),
-        pytest.param(["mqtt", "8848_5"], id="bare_pair"),
         pytest.param([["mqtt", "8848_5"]], id="pair_list"),
-        pytest.param({"mqtt": "8848_5"}, id="mapping"),
-        pytest.param([{"mqtt": "8848_5"}], id="mapping_list"),
-        pytest.param(
-            [{"domain": "mqtt", "identifier": "8848_5"}], id="selector_mapping"
-        ),
-        pytest.param(
-            {"mqtt": "8848_5", "zha": "0x00124b0001"}, id="multi_domain_mapping"
-        ),
+        pytest.param({"domain": "mqtt", "identifier": "8848_5"}, id="mapping"),
+        pytest.param([{"domain": "mqtt", "identifier": "8848_5"}], id="mapping_list"),
     ],
 )
 @pytest.mark.usefixtures("entity_entry")
@@ -281,7 +274,9 @@ async def test_service_validation_error(
         pytest.param(":8848_5", id="missing_domain"),
         pytest.param([["mqtt", "8848_5", "extra"]], id="too_many_items"),
         pytest.param([{"domain": "mqtt"}], id="incomplete_mapping"),
-        pytest.param([{"a": "1", "b": "2"}], id="mapping_of_several_domains"),
+        pytest.param([{"a": "1", "b": "2"}], id="mapping_without_domain_key"),
+        pytest.param(["mqtt", "8848_5"], id="bare_pair"),
+        pytest.param({"mqtt": "8848_5"}, id="single_key_mapping"),
         pytest.param([12], id="not_an_identifier"),
         pytest.param(12, id="not_a_list_of_identifiers"),
     ],
