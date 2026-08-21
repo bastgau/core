@@ -111,6 +111,31 @@ data:
 The two mutating actions are admin-only. Automations and scripts run without a user
 context and are unaffected.
 
+## Moving an entity to another device
+
+An entity that is **already linked to a device is refused**, whoever set that link. To
+move it, unlink it first:
+
+```yaml
+- action: device_link_tools.remove_identifier
+  data:
+    entity_id: sensor.solar_power
+- action: device_link_tools.add_identifier
+  data:
+    entity_id: sensor.solar_power
+    device_id: 9f2c1e...
+```
+
+Re-linking an entity to the device it is already on stays allowed, and is reported as
+`unchanged` — running the same script twice is safe.
+
+The refusal is there because moving an entity away from a device its **own integration**
+declares does not last. An MQTT sensor with `device.identifiers`, or a template helper
+with a `device_id`, gets its device written back by the entity platform on the next
+restart, and the re-application deliberately does not fight that: it only fills a link
+that is empty. Without the refusal the action would report success and the move would
+disappear at the next restart.
+
 ## From the UI
 
 **Settings → Devices & services → Device link tools → Configure** offers the same two

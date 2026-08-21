@@ -36,6 +36,7 @@ from .helpers import (
     async_resolve_device,
     async_resolve_device_id,
     async_resolve_entry,
+    async_resolve_targets,
     async_set_device_link,
     parse_identifiers,
 )
@@ -98,6 +99,12 @@ async def async_add_identifier(call: ServiceCall) -> ServiceResponse:
             translation_domain=DOMAIN, translation_key="device_target_required"
         )
 
+    async_resolve_targets(
+        call.hass,
+        er.async_get(call.hass),
+        call.data[ATTR_ENTITY_ID],
+        device.id,
+    )
     return _async_link(
         call.hass, call.data[ATTR_ENTITY_ID], device.id, device.identifiers
     )

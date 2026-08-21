@@ -133,3 +133,27 @@ async def test_remove_link_without_links(
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "no_links"
+
+
+@pytest.mark.usefixtures("entity_entry")
+async def test_add_link_refuses_an_already_linked_entity(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    entity_registry: er.EntityRegistry,
+    device: dr.DeviceEntry,
+    other_device: dr.DeviceEntry,
+) -> None:
+    """Test the form reports an entity that is already on another device."""
+    entity_registry.async_update_entity(SOLAR_POWER, device_id=device.id)
+    flow_id = await _async_menu(hass, config_entry)
+    await hass.config_entries.options.async_configure(
+        flow_id, {"next_step_id": "add_link"}
+    )
+
+    result = await hass.config_entries.options.async_configure(
+        flow_id, {"entity_id": [SOLAR_POWER], "device_id": other_device.id}
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "entity_already_linked"}
+    assert entity_registry.async_get(SOLAR_POWER).device_id == device.id

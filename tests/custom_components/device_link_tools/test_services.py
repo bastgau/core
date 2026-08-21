@@ -440,3 +440,55 @@ async def test_read_allowed_for_non_admin(
     )
 
     assert response["device_id"] is None
+
+
+@pytest.mark.usefixtures("entity_entry")
+async def test_add_identifier_refuses_a_second_device(
+    hass: HomeAssistant,
+    entity_registry: er.EntityRegistry,
+    device: dr.DeviceEntry,
+    other_device: dr.DeviceEntry,
+) -> None:
+    """Test an entity already linked is not moved to another device."""
+    entity_registry.async_update_entity(SOLAR_POWER, device_id=device.id)
+
+    with pytest.raises(ServiceValidationError) as err:
+        await hass.services.async_call(
+            DOMAIN,
+            "add_identifier",
+            {"entity_id": SOLAR_POWER, "device_id": other_device.id},
+            blocking=True,
+        )
+
+    assert err.value.translation_key == "entity_already_linked"
+    assert entity_registry.async_get(SOLAR_POWER).device_id == device.id
+
+
+@pytest.mark.usefixtures("entity_entry")
+async def test_moving_a_link_takes_unlinking_first(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    entity_registry: er.EntityRegistry,
+    device: dr.DeviceEntry,
+    other_device: dr.DeviceEntry,
+) -> None:
+    """Test the supported way to move an entity from one device to another."""
+    await hass.services.async_call(
+        DOMAIN,
+        "add_identifier",
+        {"entity_id": SOLAR_POWER, "device_id": device.id},
+        blocking=True,
+    )
+    await hass.services.async_call(
+        DOMAIN, "remove_identifier", {"entity_id": SOLAR_POWER}, blocking=True
+    )
+    await hass.services.async_call(
+        DOMAIN,
+        "add_identifier",
+        {"entity_id": SOLAR_POWER, "device_id": other_device.id},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    assert entity_registry.async_get(SOLAR_POWER).device_id == other_device.id
+    assert config_entry.options["links"] == {SOLAR_POWER: [["mqtt", "9000_1"]]}

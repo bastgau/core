@@ -23,7 +23,11 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import DOMAIN
-from .helpers import async_resolve_device_id, async_resolve_entry, async_set_device_link
+from .helpers import (
+    async_resolve_device_id,
+    async_resolve_targets,
+    async_set_device_link,
+)
 from .reapply import (
     DeviceLinkToolsConfigEntry,
     async_get_reapplier,
@@ -37,6 +41,7 @@ _FORM_ERRORS = {
     "device_id_composite",
     "device_id_unknown",
     "device_without_identifiers",
+    "entity_already_linked",
     "entity_not_registered",
 }
 
@@ -95,10 +100,9 @@ class DeviceLinkToolsOptionsFlow(OptionsFlowWithReload):
                 entity_registry = er.async_get(self.hass)
                 # Resolve every entity before touching any of them, so a rejected one
                 # does not leave the others half applied.
-                resolved = [
-                    async_resolve_entry(entity_registry, entity_id).entity_id
-                    for entity_id in entity_ids
-                ]
+                resolved = async_resolve_targets(
+                    self.hass, entity_registry, entity_ids, device.id
+                )
                 for entity_id in resolved:
                     async_set_device_link(entity_registry, entity_id, device.id)
             except HomeAssistantError as err:

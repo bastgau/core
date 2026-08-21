@@ -82,6 +82,39 @@ def async_resolve_entry(
 
 
 @callback
+def async_resolve_targets(
+    hass: HomeAssistant,
+    entity_registry: er.EntityRegistry,
+    entity_ids: list[str],
+    device_id: str,
+) -> list[str]:
+    """Resolve the entities to link, refusing any already linked to another device.
+
+    Moving an entity away from the device its own integration declares would be undone
+    on the next restart, so an existing link has to be removed deliberately first.
+    """
+    entries = [
+        async_resolve_entry(entity_registry, entity_id) for entity_id in entity_ids
+    ]
+
+    for entry in entries:
+        if entry.device_id is None or entry.device_id == device_id:
+            continue
+        device = dr.async_get(hass).async_get(entry.device_id)
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="entity_already_linked",
+            translation_placeholders={
+                "entity_id": entry.entity_id,
+                "name": (device and (device.name_by_user or device.name))
+                or entry.device_id,
+            },
+        )
+
+    return [entry.entity_id for entry in entries]
+
+
+@callback
 def async_resolve_device(
     hass: HomeAssistant, identifiers: Identifiers
 ) -> dr.DeviceEntry:
