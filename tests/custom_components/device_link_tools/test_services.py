@@ -124,11 +124,20 @@ async def test_add_identifier_by_device_id(
     assert config_entry.options["links"] == {SOLAR_POWER: [["mqtt", "8848_5"]]}
 
 
-@pytest.mark.usefixtures("entity_entry", "owning_entry")
+@pytest.mark.parametrize(
+    "field",
+    [
+        pytest.param("device_id", id="picked_by_id"),
+        pytest.param("source_entity_id", id="taken_from_a_source_entity"),
+    ],
+)
+@pytest.mark.usefixtures("entity_entry", "second_entity_entry")
 async def test_add_identifier_device_without_identifiers(
     hass: HomeAssistant,
     device_registry: dr.DeviceRegistry,
+    entity_registry: er.EntityRegistry,
     owning_entry: MockConfigEntry,
+    field: str,
 ) -> None:
     """Test a device known only by its connections cannot hold a durable link."""
     device = device_registry.async_get_or_create(
@@ -136,12 +145,14 @@ async def test_add_identifier_device_without_identifiers(
         connections={(dr.CONNECTION_NETWORK_MAC, "11:22:33:44:55:66")},
         name="Connections only",
     )
+    entity_registry.async_update_entity(SOLAR_POWER, device_id=device.id)
+    designations = {"device_id": device.id, "source_entity_id": SOLAR_POWER}
 
     with pytest.raises(ServiceValidationError) as err:
         await hass.services.async_call(
             DOMAIN,
             "add_identifier",
-            {"entity_id": SOLAR_POWER, "device_id": device.id},
+            {"entity_id": GRID_IMPORT, field: designations[field]},
             blocking=True,
         )
 
@@ -221,11 +232,11 @@ async def test_add_identifier_reports_unchanged(
             id="unlinking_an_entity_without_registry_entry",
         ),
         pytest.param(
-            "clone",
-            {"source_entity_id": SOLAR_POWER, "target_entity_id": GRID_IMPORT},
+            "add_identifier",
+            {"entity_id": GRID_IMPORT, "source_entity_id": SOLAR_POWER},
             (),
             "source_not_linked",
-            id="clone_source_has_no_device",
+            id="source_entity_has_no_device",
         ),
         pytest.param(
             "add_identifier",
@@ -362,18 +373,18 @@ async def test_remove_identifier(
 
 
 @pytest.mark.usefixtures("entity_entry", "second_entity_entry")
-async def test_clone(
+async def test_add_identifier_from_source_entity(
     hass: HomeAssistant,
     entity_registry: er.EntityRegistry,
     device: dr.DeviceEntry,
 ) -> None:
-    """Test copying the device link of a source entity."""
+    """Test taking the device from another entity already linked to it."""
     entity_registry.async_update_entity(SOLAR_POWER, device_id=device.id)
 
     response = await hass.services.async_call(
         DOMAIN,
-        "clone",
-        {"source_entity_id": SOLAR_POWER, "target_entity_id": GRID_IMPORT},
+        "add_identifier",
+        {"entity_id": GRID_IMPORT, "source_entity_id": SOLAR_POWER},
         blocking=True,
         return_response=True,
     )
@@ -395,9 +406,9 @@ async def test_clone(
             "remove_identifier", {"entity_id": SOLAR_POWER}, id="remove_identifier"
         ),
         pytest.param(
-            "clone",
-            {"source_entity_id": SOLAR_POWER, "target_entity_id": GRID_IMPORT},
-            id="clone",
+            "add_identifier",
+            {"entity_id": GRID_IMPORT, "source_entity_id": SOLAR_POWER},
+            id="add_identifier_from_source",
         ),
     ],
 )

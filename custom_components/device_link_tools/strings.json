@@ -20,7 +20,7 @@
       "message": "No device matches the identifiers {identifiers}."
     },
     "device_target_required": {
-      "message": "Give either a device or its identifiers."
+      "message": "Give a device, its identifiers, or an entity already linked to it."
     },
     "device_without_identifiers": {
       "message": "The device {name} has no identifiers, so the link could not be restored after a restart."
@@ -35,7 +35,7 @@
       "message": "The entity registry refused to link {entity_id} to the device {device_id}, because that device id belongs to a device that was split between config entries. Use the identifiers of one of the resulting devices instead."
     },
     "source_not_linked": {
-      "message": "{entity_id} is not linked to any device, so there is nothing to clone."
+      "message": "{entity_id} is not linked to any device, so there is no device to copy."
     },
     "update_failed": {
       "message": "Could not update {entity_id}: {error}"
@@ -125,10 +125,10 @@
   },
   "services": {
     "add_identifier": {
-      "description": "Links entities to a device, given either as a device or as the identifiers it carries.",
+      "description": "Links entities to a device, given as a device, as the identifiers it carries, or as another entity already linked to it.",
       "fields": {
         "device_id": {
-          "description": "Device to link the entities to. Use this or the identifiers, not both.",
+          "description": "Device to link the entities to. Use this, the identifiers or a source entity, not several.",
           "name": "Device"
         },
         "entity_id": {
@@ -138,23 +138,13 @@
         "identifiers": {
           "description": "Identifiers of the target device. Read them with the 'Read identifiers' action on an entity that is already linked to it.",
           "name": "Identifiers"
+        },
+        "source_entity_id": {
+          "description": "Entity whose device the entities are linked to. Use this, the device or the identifiers, not several.",
+          "name": "Source entity"
         }
       },
       "name": "Add identifier"
-    },
-    "clone": {
-      "description": "Copies the device link of one entity onto other entities, without having to type the identifiers again.",
-      "fields": {
-        "source_entity_id": {
-          "description": "Entity whose device link is copied.",
-          "name": "Source entity"
-        },
-        "target_entity_id": {
-          "description": "Entities that are linked to the same device as the source entity.",
-          "name": "Target entities"
-        }
-      },
-      "name": "Clone device link"
     },
     "read_identifiers": {
       "description": "Reads the identifiers of the device an entity is currently linked to.",

@@ -18,6 +18,10 @@ add_identifier:
       example: 1a2b3c4d5e6f7890abcdef1234567890
       selector:
         device:
+    source_entity_id:
+      example: sensor.boiler_temperature
+      selector:
+        entity:
     identifiers:
       example: '[{"domain": "mqtt", "identifier": "8848_5"}]'
       selector:
@@ -45,16 +49,3 @@ remove_identifier:
         entity:
           multiple: true
 
-clone:
-  fields:
-    source_entity_id:
-      required: true
-      example: sensor.solar_power
-      selector:
-        entity:
-    target_entity_id:
-      required: true
-      example: sensor.grid_import
-      selector:
-        entity:
-          multiple: true

@@ -53,8 +53,9 @@ name: Boiler
 
 ### `device_link_tools.add_identifier`
 
-Links one or more entities to a device, given either as a device or as the identifiers it
-carries. The two are mutually exclusive; the device picker is the easy one from the UI.
+Links one or more entities to a device. The device is designated in one of three mutually
+exclusive ways: picked directly, by the identifiers it carries, or by another entity
+already linked to it. The picker is the easy one from the UI.
 
 ```yaml
 action: device_link_tools.add_identifier
@@ -70,6 +71,15 @@ action: device_link_tools.add_identifier
 data:
   entity_id: sensor.solar_power
   identifiers: mqtt:8848_5
+```
+
+```yaml
+action: device_link_tools.add_identifier
+data:
+  entity_id:
+    - sensor.solar_power
+    - sensor.grid_import
+  source_entity_id: sensor.boiler_temperature # put them on that entity's device
 ```
 
 Whichever you use, the link is recorded by the device's **identifiers**, so it survives a
@@ -95,21 +105,7 @@ data:
   entity_id: sensor.solar_power
 ```
 
-### `device_link_tools.clone`
-
-Copies the device link of a source entity onto other entities, so you do not have to read
-and retype the identifiers.
-
-```yaml
-action: device_link_tools.clone
-data:
-  source_entity_id: sensor.boiler_temperature
-  target_entity_id:
-    - sensor.solar_power
-    - sensor.grid_import
-```
-
-The three mutating actions are admin-only. Automations and scripts run without a user
+The two mutating actions are admin-only. Automations and scripts run without a user
 context and are unaffected.
 
 ## From the UI

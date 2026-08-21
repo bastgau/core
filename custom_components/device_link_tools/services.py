@@ -11,19 +11,21 @@ from homeassistant.core import (
     callback,
 )
 from homeassistant.exceptions import ServiceValidationError
-from homeassistant.helpers import config_validation as cv, entity_registry as er
+from homeassistant.helpers import (
+    config_validation as cv,
+    device_registry as dr,
+    entity_registry as er,
+)
 from homeassistant.helpers.service import async_register_admin_service
 
 from .const import (
     ATTR_CONNECTIONS,
     ATTR_IDENTIFIERS,
     ATTR_SOURCE_ENTITY_ID,
-    ATTR_TARGET_ENTITY_ID,
     ATTR_UNCHANGED,
     ATTR_UPDATED,
     DOMAIN,
     SERVICE_ADD_IDENTIFIER,
-    SERVICE_CLONE,
     SERVICE_READ_IDENTIFIERS,
     SERVICE_REMOVE_IDENTIFIER,
 )
@@ -50,17 +52,11 @@ ADD_IDENTIFIER_SCHEMA = vol.Schema(
         vol.Required(ATTR_ENTITY_ID): ENTITY_IDS,
         vol.Exclusive(ATTR_IDENTIFIERS, "device"): parse_identifiers,
         vol.Exclusive(ATTR_DEVICE_ID, "device"): cv.string,
+        vol.Exclusive(ATTR_SOURCE_ENTITY_ID, "device"): cv.entity_id_or_uuid,
     }
 )
 
 REMOVE_IDENTIFIER_SCHEMA = vol.Schema({vol.Required(ATTR_ENTITY_ID): ENTITY_IDS})
-
-CLONE_SCHEMA = vol.Schema(
-    {
-        vol.Required(ATTR_SOURCE_ENTITY_ID): cv.entity_id_or_uuid,
-        vol.Required(ATTR_TARGET_ENTITY_ID): ENTITY_IDS,
-    }
-)
 
 
 async def async_read_identifiers(call: ServiceCall) -> ServiceResponse:
@@ -90,11 +86,13 @@ async def async_read_identifiers(call: ServiceCall) -> ServiceResponse:
 
 
 async def async_add_identifier(call: ServiceCall) -> ServiceResponse:
-    """Link entities to a device given by its identifiers or by its id."""
+    """Link entities to a device, designated in one of three ways."""
     if (device_id := call.data.get(ATTR_DEVICE_ID)) is not None:
         device = async_resolve_device_id(call.hass, device_id)
     elif (identifiers := call.data.get(ATTR_IDENTIFIERS)) is not None:
         device = async_resolve_device(call.hass, identifiers)
+    elif (source_entity_id := call.data.get(ATTR_SOURCE_ENTITY_ID)) is not None:
+        device = _async_device_of(call.hass, source_entity_id)
     else:
         raise ServiceValidationError(
             translation_domain=DOMAIN, translation_key="device_target_required"
@@ -105,27 +103,24 @@ async def async_add_identifier(call: ServiceCall) -> ServiceResponse:
     )
 
 
-async def async_remove_identifier(call: ServiceCall) -> ServiceResponse:
-    """Unlink entities from the device they are linked to."""
-    return _async_link(call.hass, call.data[ATTR_ENTITY_ID], None, None)
-
-
-async def async_clone(call: ServiceCall) -> ServiceResponse:
-    """Copy the device link of a source entity onto target entities."""
-    entity_registry = er.async_get(call.hass)
-    source = async_resolve_entry(entity_registry, call.data[ATTR_SOURCE_ENTITY_ID])
-
-    if source.device_id is None:
+@callback
+def _async_device_of(hass: HomeAssistant, entity_id: str) -> dr.DeviceEntry:
+    """Return the device another entity is linked to."""
+    entry = async_resolve_entry(er.async_get(hass), entity_id)
+    if entry.device_id is None:
         raise ServiceValidationError(
             translation_domain=DOMAIN,
             translation_key="source_not_linked",
-            translation_placeholders={"entity_id": source.entity_id},
+            translation_placeholders={"entity_id": entry.entity_id},
         )
+    # Through the same resolution as a picked device, so a composite or an
+    # identifier-less device is refused here too rather than at write time.
+    return async_resolve_device_id(hass, entry.device_id)
 
-    identifiers, _, _ = async_device_identifiers(call.hass, source.device_id)
-    return _async_link(
-        call.hass, call.data[ATTR_TARGET_ENTITY_ID], source.device_id, identifiers
-    )
+
+async def async_remove_identifier(call: ServiceCall) -> ServiceResponse:
+    """Unlink entities from the device they are linked to."""
+    return _async_link(call.hass, call.data[ATTR_ENTITY_ID], None, None)
 
 
 @callback
@@ -175,7 +170,6 @@ def async_setup_services(hass: HomeAssistant) -> None:
     for service_name, handler, schema in (
         (SERVICE_ADD_IDENTIFIER, async_add_identifier, ADD_IDENTIFIER_SCHEMA),
         (SERVICE_REMOVE_IDENTIFIER, async_remove_identifier, REMOVE_IDENTIFIER_SCHEMA),
-        (SERVICE_CLONE, async_clone, CLONE_SCHEMA),
     ):
         async_register_admin_service(
             hass,
