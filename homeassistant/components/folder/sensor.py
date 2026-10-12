@@ -12,7 +12,7 @@ from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
 )
-from homeassistant.const import UnitOfInformation
+from homeassistant.const import CONF_UNIQUE_ID, UnitOfInformation
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -30,6 +30,7 @@ PLATFORM_SCHEMA = SENSOR_PLATFORM_SCHEMA.extend(
     {
         probatio.Required(CONF_FOLDER_PATHS): cv.isdir,
         probatio.Optional(CONF_FILTER, default=DEFAULT_FILTER): cv.string,
+        probatio.Optional(CONF_UNIQUE_ID): cv.string,
     }
 )
 
@@ -58,7 +59,7 @@ def setup_platform(
     if not hass.config.is_allowed_path(path):
         _LOGGER.error("Folder %s is not valid or allowed", path)
     else:
-        folder = Folder(path, config[CONF_FILTER])
+        folder = Folder(path, config[CONF_FILTER], config.get(CONF_UNIQUE_ID))
         add_entities([folder], True)
 
 
@@ -69,12 +70,15 @@ class Folder(SensorEntity):
     _attr_icon = "mdi:folder"
     _attr_native_unit_of_measurement = UnitOfInformation.MEGABYTES
 
-    def __init__(self, folder_path: str, filter_term: str) -> None:
+    def __init__(
+        self, folder_path: str, filter_term: str, unique_id: str | None = None
+    ) -> None:
         """Initialize the data object."""
         folder_path = os.path.join(folder_path, "")  # If no trailing / add it
         self._folder_path = folder_path  # Need to check its a valid path
         self._filter_term = filter_term
         self._attr_name = os.path.split(os.path.split(folder_path)[0])[1]
+        self._attr_unique_id = unique_id
 
     def update(self) -> None:
         """Update the sensor."""
