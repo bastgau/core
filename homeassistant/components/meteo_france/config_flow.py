@@ -10,8 +10,11 @@ import probatio
 from homeassistant.config_entries import SOURCE_IMPORT, ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_LATITUDE, CONF_LONGITUDE
 from homeassistant.core import callback
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.location import has_location
+from homeassistant.helpers.selector import EntitySelector, EntitySelectorConfig
 
-from .const import CONF_CITY, DOMAIN
+from .const import CONF_CITY, CONF_LOCATION_ENTITY, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,7 +40,7 @@ class MeteoFranceFlowHandler(ConfigFlow, domain=DOMAIN):
             user_input = {}
 
         return self.async_show_form(
-            step_id="user",
+            step_id="city",
             data_schema=probatio.Schema(
                 {
                     probatio.Required(
@@ -53,6 +56,12 @@ class MeteoFranceFlowHandler(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle a flow initiated by the user."""
+        return self.async_show_menu(step_id="user", menu_options=["city", "entity"])
+
+    async def async_step_city(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle a fixed location searched by city name or postal code."""
         errors: dict[str, str] = {}
 
         if user_input is None:
@@ -106,12 +115,48 @@ class MeteoFranceFlowHandler(ConfigFlow, domain=DOMAIN):
             user_input = {CONF_CITY: _build_place_key(self.places[0])}
 
         city_infos = user_input[CONF_CITY].split(";")
-        return await self.async_step_user(
+        return await self.async_step_city(
             {
                 CONF_CITY: city_infos[0],
                 CONF_LATITUDE: city_infos[1],
                 CONF_LONGITUDE: city_infos[2],
             }
+        )
+
+    async def async_step_entity(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle a location following a person or device tracker."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            registry = er.async_get(self.hass)
+            entity_entry = registry.async_get(user_input[CONF_LOCATION_ENTITY])
+            if entity_entry is None:
+                errors["base"] = "entity_not_found"
+            elif entity_entry.disabled_by is not None:
+                errors["base"] = "entity_disabled"
+            elif (
+                state := self.hass.states.get(entity_entry.entity_id)
+            ) is None or not has_location(state):
+                errors["base"] = "entity_no_coordinates"
+            else:
+                # Registry id keeps the entry valid if the entity is renamed
+                await self.async_set_unique_id(entity_entry.id)
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(
+                    title=state.name, data={CONF_LOCATION_ENTITY: entity_entry.id}
+                )
+
+        return self.async_show_form(
+            step_id="entity",
+            data_schema=probatio.Schema(
+                {
+                    probatio.Required(CONF_LOCATION_ENTITY): EntitySelector(
+                        EntitySelectorConfig(domain=["person", "device_tracker"])
+                    )
+                }
+            ),
+            errors=errors,
         )
 
 

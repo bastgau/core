@@ -81,3 +81,37 @@ async def test_unload_releases_the_department(
     await hass.async_block_till_done()
 
     assert second_entry.runtime_data.alert_coordinator is not None
+
+
+async def test_tracking_entry_provides_alerts_alongside_fixed_entry(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    tracking_entry: MockConfigEntry,
+) -> None:
+    """Test a tracking entry gets alerts without claiming the department."""
+    # Setting up one entry sets up every entry of the domain
+    await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert config_entry.runtime_data.alert_coordinator is not None
+    assert tracking_entry.runtime_data.alert_coordinator is not None
+    assert hass.data[METEO_FRANCE_DATA] == {"74"}
+
+    assert await hass.config_entries.async_unload(tracking_entry.entry_id)
+    assert hass.data[METEO_FRANCE_DATA] == {"74"}
+
+
+async def test_unload_tracking_entry_after_department_released(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    tracking_entry: MockConfigEntry,
+) -> None:
+    """Test unloading still works once the shared registry has been removed."""
+    await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert await hass.config_entries.async_unload(config_entry.entry_id)
+    assert METEO_FRANCE_DATA not in hass.data
+
+    assert await hass.config_entries.async_unload(tracking_entry.entry_id)
+    assert tracking_entry.state is ConfigEntryState.NOT_LOADED

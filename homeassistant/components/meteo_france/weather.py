@@ -44,7 +44,11 @@ from .const import (
     MANUFACTURER,
     MODEL,
 )
-from .coordinator import MeteoFranceConfigEntry, MeteoFranceForecastUpdateCoordinator
+from .coordinator import (
+    MeteoFranceConfigEntry,
+    MeteoFranceForecastUpdateCoordinator,
+    get_unique_id_prefix,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -105,7 +109,10 @@ class MeteoFranceWeather(
         self._attr_name = self.coordinator.data.position["name"]
         self._mode = mode
         pos = self.coordinator.data.position
-        self._attr_unique_id = f"{pos['lat']},{pos['lon']}"
+        self._attr_unique_id = (
+            get_unique_id_prefix(coordinator.config_entry)
+            or f"{pos['lat']},{pos['lon']}"
+        )
 
     @callback
     @override

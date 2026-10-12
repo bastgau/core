@@ -42,7 +42,11 @@ from .const import (
     MANUFACTURER,
     MODEL,
 )
-from .coordinator import MeteoFranceAlertUpdateCoordinator, MeteoFranceConfigEntry
+from .coordinator import (
+    MeteoFranceAlertUpdateCoordinator,
+    MeteoFranceConfigEntry,
+    get_unique_id_prefix,
+)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -238,7 +242,11 @@ class MeteoFranceSensor[_DataT: Rain | Forecast | CurrentPhenomenons](
             city_name = coordinator.data.position["name"]
             self._attr_name = f"{city_name} {description.name}"
             pos = coordinator.data.position
-            self._attr_unique_id = f"{pos['lat']},{pos['lon']}_{description.key}"
+            prefix = (
+                get_unique_id_prefix(coordinator.config_entry)
+                or f"{pos['lat']},{pos['lon']}"
+            )
+            self._attr_unique_id = f"{prefix}_{description.key}"
 
     @property
     @override
@@ -322,7 +330,10 @@ class MeteoFranceAlertSensor(MeteoFranceSensor[CurrentPhenomenons]):
         super().__init__(coordinator, description)
         dept_code = self.coordinator.data.domain_id
         self._attr_name = f"{dept_code} {description.name}"
-        self._attr_unique_id = self._attr_name
+        if prefix := get_unique_id_prefix(coordinator.config_entry):
+            self._attr_unique_id = f"{prefix}_{description.key}"
+        else:
+            self._attr_unique_id = self._attr_name
 
     @property
     @override
