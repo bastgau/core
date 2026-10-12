@@ -3,7 +3,9 @@
 import os
 
 from homeassistant.components.folder.sensor import CONF_FOLDER_PATHS
+from homeassistant.const import CONF_UNIQUE_ID
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
 
 CWD = os.path.join(os.path.dirname(__file__))
@@ -47,5 +49,31 @@ async def test_valid_path(hass: HomeAssistant) -> None:
     state = hass.states.get("sensor.test_folder")
     assert state.state == "0.0"
     assert state.attributes.get("number_of_files") == 1
+
+    remove_test_file()
+
+
+async def test_unique_id(
+    hass: HomeAssistant, entity_registry: er.EntityRegistry
+) -> None:
+    """Test that the unique_id option registers the entity."""
+    if not os.path.isdir(TEST_DIR):
+        os.mkdir(TEST_DIR)
+    create_file(TEST_FILE)
+
+    hass.config.allowlist_external_dirs = {TEST_DIR}
+    config = {
+        "sensor": {
+            "platform": "folder",
+            CONF_FOLDER_PATHS: TEST_DIR,
+            CONF_UNIQUE_ID: "test_folder_unique_id",
+        }
+    }
+    assert await async_setup_component(hass, "sensor", config)
+    await hass.async_block_till_done()
+
+    entry = entity_registry.async_get("sensor.test_folder")
+    assert entry is not None
+    assert entry.unique_id == "test_folder_unique_id"
 
     remove_test_file()
