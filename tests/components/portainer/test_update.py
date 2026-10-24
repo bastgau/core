@@ -177,6 +177,70 @@ async def test_update_install_progress(
     assert state.attributes[ATTR_UPDATE_PERCENTAGE] is None
 
 
+async def test_watcher_skips_containers_with_disabled_update(
+    hass: HomeAssistant,
+    entity_registry: er.EntityRegistry,
+    mock_portainer_client: AsyncMock,
+    mock_config_entry: MockConfigEntry,
+) -> None:
+    """Test the watcher is not given containers whose update entity is disabled."""
+    mock_config_entry.add_to_hass(hass)
+    entity_registry.async_get_or_create(
+        Platform.UPDATE,
+        DOMAIN,
+        f"{mock_config_entry.entry_id}_funny_chatelet_container_image_update",
+        config_entry=mock_config_entry,
+        disabled_by=er.RegistryEntryDisabler.USER,
+    )
+
+    with patch(
+        "homeassistant.components.portainer._PLATFORMS",
+        [Platform.UPDATE],
+    ):
+        await setup_integration(hass, mock_config_entry)
+
+    containers = await mock_config_entry.runtime_data.watcher_client().get_containers(1)
+
+    names = {name for container in containers for name in container.names}
+    assert "/funny_chatelet" not in names
+    assert "/practical_morse" in names
+
+
+async def test_update_disabled_container_not_checked(
+    hass: HomeAssistant,
+    freezer: FrozenDateTimeFactory,
+    entity_registry: er.EntityRegistry,
+    mock_portainer_client: AsyncMock,
+    mock_portainer_watcher: MagicMock,
+    mock_config_entry: MockConfigEntry,
+) -> None:
+    """Test a recreated container with a disabled update entity is not checked."""
+    mock_config_entry.add_to_hass(hass)
+    entity_registry.async_get_or_create(
+        Platform.UPDATE,
+        DOMAIN,
+        f"{mock_config_entry.entry_id}_funny_chatelet_container_image_update",
+        config_entry=mock_config_entry,
+        disabled_by=er.RegistryEntryDisabler.USER,
+    )
+    await _watch_all_containers(hass, mock_portainer_watcher)
+
+    with patch(
+        "homeassistant.components.portainer._PLATFORMS",
+        [Platform.UPDATE],
+    ):
+        await setup_integration(hass, mock_config_entry)
+
+    await _recreate_container(hass, mock_portainer_client)
+
+    freezer.tick(DEFAULT_SCAN_INTERVAL)
+    async_fire_time_changed(hass, dt_util.utcnow())
+    await hass.async_block_till_done(wait_background_tasks=True)
+
+    mock_portainer_client.container_image_status.assert_not_called()
+    assert hass.states.get(ENTITY_ID) is None
+
+
 @pytest.mark.parametrize(
     "exception",
     [

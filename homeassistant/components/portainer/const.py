@@ -4,6 +4,7 @@ from pyportainer import DockerContainerState
 
 DOMAIN = "portainer"
 DEFAULT_NAME = "Portainer"
+CONTAINER_IMAGE_UPDATE_KEY = "container_image_update"
 
 API_MAX_RETRIES = 3
 

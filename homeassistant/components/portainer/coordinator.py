@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 import logging
 import time
-from typing import Any, override
+from typing import Any, cast, override
 
 from pyportainer import (
     DockerContainerState,
@@ -37,16 +37,23 @@ from pyportainer.models.stacks import Stack
 from pyportainer.watcher import PortainerImageWatcher
 from yarl import URL
 
+from homeassistant.components.update import DOMAIN as UPDATE_DOMAIN
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_URL
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 import homeassistant.helpers.device_registry as dr
 from homeassistant.helpers.device_registry import DeviceEntryType
+import homeassistant.helpers.entity_registry as er
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from .const import CONTAINER_STATE_ACTIONS, DEFAULT_NAME, DOMAIN
+from .const import (
+    CONTAINER_IMAGE_UPDATE_KEY,
+    CONTAINER_STATE_ACTIONS,
+    DEFAULT_NAME,
+    DOMAIN,
+)
 from .util import sanitize_container_name
 
 type PortainerConfigEntry = ConfigEntry[PortainerCoordinator]
@@ -218,6 +225,27 @@ class PortainerBaseCoordinator[_DataT](DataUpdateCoordinator[_DataT]):
                 translation_domain=DOMAIN,
                 translation_key="timeout_connect",
             ) from err
+
+
+class PortainerWatchedContainersClient:
+    """Client proxy for the image watcher, hiding containers with a disabled update entity."""
+
+    def __init__(self, coordinator: PortainerCoordinator) -> None:
+        """Initialize the proxy."""
+        self._coordinator = coordinator
+
+    def __getattr__(self, name: str) -> Any:
+        """Delegate everything else to the real client."""
+        return getattr(self._coordinator.portainer, name)
+
+    async def get_containers(self, endpoint_id: int) -> list[DockerContainer]:
+        """Return the containers whose image should be checked for updates."""
+        containers = await self._coordinator.portainer.get_containers(endpoint_id)
+        return [
+            container
+            for container in containers
+            if self._coordinator.is_image_update_enabled(container)
+        ]
 
 
 class PortainerCoordinator(
@@ -661,11 +689,27 @@ class PortainerCoordinator(
         )
         return local_image
 
+    def watcher_client(self) -> Portainer:
+        """Return the client the image watcher should use."""
+        return cast(Portainer, PortainerWatchedContainersClient(self))
+
+    def is_image_update_enabled(self, container: DockerContainer) -> bool:
+        """Return False if the container's update entity is disabled."""
+        unique_id = (
+            f"{self.config_entry.entry_id}"
+            f"_{sanitize_container_name(container.names[0])}"
+            f"_{CONTAINER_IMAGE_UPDATE_KEY}"
+        )
+        registry = er.async_get(self.hass)
+        entity_id = registry.async_get_entity_id(UPDATE_DOMAIN, DOMAIN, unique_id)
+        entry = registry.async_get(entity_id) if entity_id else None
+        return entry is None or not entry.disabled
+
     async def _get_image_status(
         self, endpoint_id: int, container: DockerContainer
     ) -> PortainerImageUpdateStatus | None:
         """Return the image update status, checking containers the watcher has not seen."""
-        if self.watcher is None:
+        if self.watcher is None or not self.is_image_update_enabled(container):
             return None
 
         if result := self.watcher.results.get((endpoint_id, container.id)):

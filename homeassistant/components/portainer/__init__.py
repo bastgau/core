@@ -70,9 +70,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: PortainerConfigEntry) ->
         request_timeout=10,
         max_retries=API_MAX_RETRIES,
     )
-    watcher = PortainerImageWatcher(client, interval=timedelta(hours=24))
-
     coordinator = PortainerCoordinator(hass, entry, client)
+    watcher = PortainerImageWatcher(
+        coordinator.watcher_client(), interval=timedelta(hours=24)
+    )
     coordinator.watcher = watcher
     await coordinator.async_config_entry_first_refresh()
 

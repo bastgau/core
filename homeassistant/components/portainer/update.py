@@ -26,7 +26,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import DOMAIN
+from .const import CONTAINER_IMAGE_UPDATE_KEY, DOMAIN
 from .coordinator import (
     PortainerConfigEntry,
     PortainerContainerData,
@@ -60,7 +60,7 @@ def _short_digest(digest: str) -> str:
 
 CONTAINER_IMAGE: tuple[PortainerContainerUpdateEntityDescription] = (
     PortainerContainerUpdateEntityDescription(
-        key="container_image_update",
+        key=CONTAINER_IMAGE_UPDATE_KEY,
         translation_key="container_image_update",
         entity_category=EntityCategory.CONFIG,
         installed_version=lambda data: (
